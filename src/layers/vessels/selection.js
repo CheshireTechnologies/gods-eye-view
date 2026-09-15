@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { isPointerFree } from '../../data/inputOwnership.js';
 import { VESSEL_OVERLAY_SOURCE_ID } from '../../data/vesselLabels.js';
 import { isTrackingPersistenceEnabled } from '../../data/trackingPersistence.js';
 import { shouldArmRefreshRestore } from '../../data/refreshTrackingRestore.js';
@@ -35,10 +36,12 @@ export function createSelection({
   function bindVesselInteraction(viewer, handler, keyTarget) {
     state.clickHandler = handler;
     handler.setInputAction((click) => {
-      if (!state.enabled) return;
+      // A tool owns the pointer (src/data/inputOwnership.js): yield the click.
+      if (!isPointerFree()) return;
+      if (!state.feed.enabled) return;
       const picked = viewer.scene.pick(click.position);
       const pickedId = resolvePickId(picked);
-      let record = pickedId ? state.vesselMap.get(pickedId) : null;
+      let record = pickedId ? state.records.byMmsi.get(pickedId) : null;
       const rawId = picked?.id ?? picked?.primitive?.id;
       const ownRecordPick =
         rawId && typeof rawId === 'object' && Object.hasOwn(rawId, 'mmsi');
@@ -71,7 +74,7 @@ export function createSelection({
         const mmsi = String(cardHit.entryId || '').startsWith('vessel:')
           ? cardHit.entryId.slice('vessel:'.length)
           : null;
-        record = mmsi ? state.vesselMap.get(mmsi) || null : null;
+        record = mmsi ? state.records.byMmsi.get(mmsi) || null : null;
         // A stale card id is not empty terrain and must not clear a newer
         // selection. The next paint will evict its hit rectangle.
         if (!record) return;
@@ -117,7 +120,9 @@ export function createSelection({
       kind: 'vessel',
       id: record.mmsi,
       label: record.name || record.mmsi,
-      position: record.billboard?.position || record.position,
+      position:
+        components.rendering.getVisual(record).billboard?.position ||
+        components.rendering.getVisual(record).position,
     });
     return true;
   }
@@ -139,7 +144,7 @@ export function createSelection({
   }
 
   function onVesselKeyDown(event) {
-    if (!state.enabled || event.key !== 'Escape') return;
+    if (!state.feed.enabled || event.key !== 'Escape') return;
     const transition = components.queries.reduceVesselSelection({
       selectedMmsi: state.selectedRecord?.mmsi,
       gesture: 'escape',
@@ -155,9 +160,11 @@ export function createSelection({
     clearSelection({ preserveTrail: reuseTrail });
     state.selectedRecord = record;
     record.missedRefreshes = 0;
-    if (record.billboard) {
-      record.billboard.image = components.rendering.shipIcon(record, true);
-      record.billboard.scale = components.rendering.shipScale(record) * 1.2;
+    if (components.rendering.getVisual(record).billboard) {
+      components.rendering.getVisual(record).billboard.image =
+        components.rendering.shipIcon(record, true);
+      components.rendering.getVisual(record).billboard.scale =
+        components.rendering.shipScale(record) * 1.2;
     }
     // Rebuild the card set immediately so the full-detail card appears on the
     // click, not up to VISIBILITY_UPDATE_MS later.
@@ -210,14 +217,17 @@ export function createSelection({
 
   function clearSelection({ preserveTrail = false, evicted = false } = {}) {
     const record = state.selectedRecord;
-    if (record?.billboard) {
-      record.billboard.image = components.rendering.shipIcon(record, false);
-      record.billboard.scale = components.rendering.shipScale(record);
+    if (components.rendering.getVisual(record)?.billboard) {
+      components.rendering.getVisual(record).billboard.image =
+        components.rendering.shipIcon(record, false);
+      components.rendering.getVisual(record).billboard.scale =
+        components.rendering.shipScale(record);
     }
     state.selectedRecord = null;
     // Drop the full-detail card right away (no-op when the layer is disabled —
     // disable() clears the entry set itself).
-    if (record && state.enabled) components.rendering.updateVisibility(true);
+    if (record && state.feed.enabled)
+      components.rendering.updateVisibility(true);
     if (!preserveTrail) components.tracking.clearSelectedVesselTrail();
     try {
       clearSelectedEntityContextForLayer('ais-live-vessels', { evicted });
@@ -285,7 +295,7 @@ export function createSelection({
     const pending = state._pendingSelectionRestore;
     if (!pending) return false;
     state._pendingSelectionRestore = null;
-    const record = state.vesselMap.get(pending.mmsi);
+    const record = state.records.byMmsi.get(pending.mmsi);
     if (record) {
       selectVessel(record, { origin: 'refresh-restore' });
       return true;

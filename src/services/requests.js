@@ -1,3 +1,4 @@
+import { createOverpassFeatureSource } from '../sources/overpassFeatures.js';
 /** Parse bounded retry information from a service response. */
 function retryAfterMs(value) {
   if (value == null || String(value).trim() === '') return null;
@@ -13,6 +14,7 @@ export function createApplicationRequestServices({
   fetchImpl = (...args) => fetch(...args),
   signal: lifetime,
   endpoints = {},
+  features,
 } = {}) {
   const urls = {
     boundaries: '/api/overpass',
@@ -63,7 +65,7 @@ export function createApplicationRequestServices({
       throw new Error(`${label} unavailable (${response.status})`);
     return response.data;
   }
-  return {
+  const services = {
     boundaries: {
       async query(query, { signal } = {}) {
         const response = await request(urls.boundaries, {
@@ -137,4 +139,11 @@ export function createApplicationRequestServices({
       },
     },
   };
+  services.features =
+    features ??
+    createOverpassFeatureSource({
+      boundarySource: services.boundaries,
+      signal: lifetime,
+    });
+  return services;
 }
