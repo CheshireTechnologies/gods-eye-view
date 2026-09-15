@@ -57,47 +57,55 @@ function normalizeRssArticles(xml, limit = 5) {
   return articles;
 }
 
-async function fetchRegionalNews(place) {
-  const query = place?.locality || place?.region || place?.country;
-  if (!query)
-    return { status: 'unavailable', query: null, articles: [], source: null };
+async function fetchNewsRss(query, limit) {
   const rssParams = new URLSearchParams({
     q: String(query).replace(/["\\]/g, ' ').trim(),
     hl: 'en-US',
     gl: 'US',
     ceid: 'US:en',
   });
+  const xml = await fetchRegionalText(
+    `https://news.google.com/rss/search?${rssParams}`,
+    {
+      headers: { 'User-Agent': 'GodsEyeView/0.1' },
+      timeoutMs: 12_000,
+    },
+  );
+  return normalizeRssArticles(xml, limit);
+}
+
+async function fetchNewsGdelt(query, limit, timespan) {
+  const params = new URLSearchParams({
+    query: `"${String(query).replace(/["\\]/g, ' ').trim()}"`,
+    mode: 'artlist',
+    format: 'json',
+    maxrecords: String(limit),
+    sort: 'datedesc',
+    timespan,
+  });
+  const payload = await fetchRegionalJson(
+    `https://api.gdeltproject.org/api/v2/doc/doc?${params}`,
+    {
+      headers: { 'User-Agent': 'GodsEyeView/0.1' },
+      timeoutMs: 12_000,
+    },
+  );
+  return normalizeRegionalArticles(payload, limit);
+}
+
+async function fetchRegionalNews(place) {
+  const query = place?.locality || place?.region || place?.country;
+  if (!query)
+    return { status: 'unavailable', query: null, articles: [], source: null };
   try {
-    const xml = await fetchRegionalText(
-      `https://news.google.com/rss/search?${rssParams}`,
-      {
-        headers: { 'User-Agent': 'GodsEyeView/0.1' },
-        timeoutMs: 12_000,
-      },
-    );
-    const articles = normalizeRssArticles(xml, 5);
+    const articles = await fetchNewsRss(query, 5);
     if (articles.length)
       return { status: 'ready', query, articles, source: 'Google News RSS' };
   } catch {
     /* fall through to the existing free index */
   }
-  const params = new URLSearchParams({
-    query: `"${String(query).replace(/["\\]/g, ' ').trim()}"`,
-    mode: 'artlist',
-    format: 'json',
-    maxrecords: '5',
-    sort: 'datedesc',
-    timespan: '48h',
-  });
   try {
-    const payload = await fetchRegionalJson(
-      `https://api.gdeltproject.org/api/v2/doc/doc?${params}`,
-      {
-        headers: { 'User-Agent': 'GodsEyeView/0.1' },
-        timeoutMs: 12_000,
-      },
-    );
-    const articles = normalizeRegionalArticles(payload, 5);
+    const articles = await fetchNewsGdelt(query, 5, '48h');
     return {
       status: articles.length ? 'ready' : 'empty',
       query,
@@ -109,4 +117,63 @@ async function fetchRegionalNews(place) {
   }
 }
 
-export { fetchRegionalNews };
+// Progressively wider GDELT lookback windows for a free-text search that
+// isn't tied to the camera position. A quiet or slightly older story (last
+// week's landslide, not just today's) still turns up something before this
+// gives up, while a hot story still resolves on the first, narrowest pass.
+const NEWS_SEARCH_TIMESPANS = ['48h', '7d', '1m', '3m'];
+
+/**
+ * Free-text news search for an arbitrary place/topic — unlike
+ * fetchRegionalNews, this isn't anchored to the camera-tracked subject's
+ * position, so it's what powers "what happened in <place>" voice queries.
+ * Tries Google News RSS first, then GDELT with widening time windows.
+ */
+async function fetchNewsForQuery(query, { limit = 6 } = {}) {
+  const cleanQuery = String(query || '').trim();
+  if (!cleanQuery)
+    return {
+      status: 'unavailable',
+      query: null,
+      articles: [],
+      source: null,
+      timespan: null,
+    };
+  try {
+    const articles = await fetchNewsRss(cleanQuery, limit);
+    if (articles.length)
+      return {
+        status: 'ready',
+        query: cleanQuery,
+        articles,
+        source: 'Google News RSS',
+        timespan: null,
+      };
+  } catch {
+    /* fall through to GDELT */
+  }
+  for (const timespan of NEWS_SEARCH_TIMESPANS) {
+    try {
+      const articles = await fetchNewsGdelt(cleanQuery, limit, timespan);
+      if (articles.length)
+        return {
+          status: 'ready',
+          query: cleanQuery,
+          articles,
+          source: 'GDELT fallback',
+          timespan,
+        };
+    } catch {
+      /* try the next, wider window */
+    }
+  }
+  return {
+    status: 'empty',
+    query: cleanQuery,
+    articles: [],
+    source: null,
+    timespan: null,
+  };
+}
+
+export { fetchRegionalNews, fetchNewsForQuery };

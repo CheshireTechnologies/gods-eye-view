@@ -9,6 +9,7 @@ import { getActiveCameraMotion, interruptCameraMotion, moveCamera } from '../cam
 import { reassertNavigationHandoff, runExplicitNavigation } from '../navigationPolicy.js';
 import { normalizeRadioCountryInput } from '../data/radioCountry.js';
 import { TR3B_CLASS } from '../data/tr3bRegistry.js';
+import { isTrackingPersistenceEnabled } from '../data/trackingPersistence.js';
 import {
   controlCctv,
   controlRadio as runControlRadio,
@@ -423,6 +424,50 @@ test('successful voice tracking stamps and releases the old owner before layer t
   assert.deepEqual(order, ['stamp:satellite', 'release', 'cancel', 'track:25544']);
 });
 
+test('track_entity records a start point/time so get_current_view_state can report distance and elapsed time since', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  let livePosition = { icao24: 'abc123', callsign: 'UAL1', latitude: 30.0, longitude: -97.0, altitudeM: 10000 };
+  const flights = {
+    findByQuery: () => ({ icao24: 'abc123', callsign: 'UAL1', latitude: 30.0, longitude: -97.0, altitudeM: 10000 }),
+    trackById: () => true,
+    stopTracking: () => true,
+    getTrackedInfo: () => livePosition,
+  };
+  const dataManager = {
+    layers: new Map([['flights', { module: flights }]]),
+    isEnabled: (id) => id === 'flights',
+    setLayerParams: () => true,
+    getAll: () => [],
+  };
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+
+  const tracked = await runner('track_entity', { query: 'UAL1', layerId: 'flights' });
+  assert.equal(tracked.ok, true);
+
+  // The aircraft moves ~1 degree of longitude east at 30N (~96 km).
+  livePosition = { ...livePosition, longitude: -96.0 };
+
+  const state = await runner('get_current_view_state');
+  const entry = state.tracked.find((t) => t.layerId === 'flights');
+  assert.ok(entry?.since, 'a since block is reported for the tracked entity');
+  assert.equal(entry.since.startLatitude, 30.0);
+  assert.equal(entry.since.startLongitude, -97.0);
+  assert.ok(
+    entry.since.distanceFromStartKm > 90 && entry.since.distanceFromStartKm < 100,
+    `distance should reflect the ~1deg move, got ${entry.since.distanceFromStartKm}`,
+  );
+  assert.equal(entry.since.averageSpeedKmh, null, 'too little elapsed time to report a rate yet');
+
+  assert.equal((await runner('stop_tracking')).ok, true);
+  const afterStop = await runner('get_current_view_state');
+  assert.equal(
+    afterStop.tracked.find((t) => t.layerId === 'flights')?.since,
+    undefined,
+    'stop_tracking clears the recorded start point',
+  );
+});
+
 test('voice Stop Tracking clears all durable tracker IDs even without active trackers', async () => {
   const cleared = [];
   const dormant = { getTrackedInfo: () => null, stopTracking() { throw new Error('must not need active tracking'); } };
@@ -491,6 +536,34 @@ test('voice Stop Tracking reports exact layers whose active or durable clear fai
   assert.equal(viewer.trackedEntity, undefined, 'camera ownership still releases after partial failure');
 });
 
+test('voice set_tracking_persistence toggles the shared config and reports the resulting state', async () => {
+  const dataManager = { layers: new Map(), getAll: () => [] };
+  const runner = createGevActionRunner({
+    viewer: {
+      scene: {
+        canvas: { addEventListener() {}, removeEventListener() {} },
+        preRender: { addEventListener() {} },
+      },
+      camera: { moveEnd: { addEventListener() {} } },
+      clock: { onTick: { addEventListener() {} } },
+    },
+    styleManager: {},
+    dataManager,
+  });
+  assert.deepEqual(
+    await runner('set_tracking_persistence', { enabled: false }),
+    { ok: true, action: 'set_tracking_persistence', enabled: false },
+  );
+  assert.equal(isTrackingPersistenceEnabled(), false);
+  assert.deepEqual(
+    await runner('set_tracking_persistence', { enabled: true }),
+    { ok: true, action: 'set_tracking_persistence', enabled: true },
+  );
+  assert.equal(isTrackingPersistenceEnabled(), true);
+  // Never assume truthy: a stray string/number must coerce to a strict boolean.
+  assert.equal((await runner('set_tracking_persistence', { enabled: 'nope' })).enabled, false);
+});
+
 test('successful voice overhead framing stamps and releases the old owner before flight', async () => {
   globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
   const { order, viewer, styleManager } = createVoiceNavigationHarness();
@@ -506,6 +579,60 @@ test('successful voice overhead framing stamps and releases the old owner before
   const result = await runner('frame_overhead', { target: 'flights' });
   assert.equal(result.ok, true);
   assert.deepEqual(order, ['stamp:frame', 'release', 'cancel', 'fly:released']);
+});
+
+test('nearby_vehicles requires the Traffic layer to be enabled', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  const dataManager = { layers: new Map(), isEnabled: () => false, getAll: () => [] };
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+  assert.deepEqual(await runner('nearby_vehicles', {}), {
+    ok: false,
+    action: 'nearby_vehicles',
+    error: 'The Traffic layer is not enabled',
+  });
+});
+
+test('nearby_vehicles returns only the documented, non-identifying summary fields', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  const vehicles = [
+    { token: 'tok-1', latitude: 30.1, longitude: -97.1, headingDeg: 90, speedMps: 10 },
+    { token: 'tok-2', latitude: 30.2, longitude: -97.2, headingDeg: 180, speedMps: 20 },
+  ];
+  let queried = null;
+  const traffic = {
+    getAnonymousVehiclesInRange(center, radiusM) {
+      queried = { center, radiusM };
+      return vehicles;
+    },
+  };
+  const dataManager = {
+    layers: new Map([['traffic', { module: traffic }]]),
+    isEnabled: (id) => id === 'traffic',
+    getAll: () => [],
+  };
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+  const result = await runner('nearby_vehicles', { radiusKm: 2 });
+  assert.equal(result.ok, true);
+  assert.equal(result.count, 2);
+  assert.equal(result.radiusKm, 2);
+  assert.equal(result.averageSpeedMps, 15);
+  assert.deepEqual(result.nearest, [
+    { token: 'tok-1', speedMps: 10, headingDeg: 90 },
+    { token: 'tok-2', speedMps: 20, headingDeg: 180 },
+  ]);
+  // Nothing beyond the documented summary shape ever surfaces — no position,
+  // no road/OSM data, nothing identity-shaped.
+  assert.deepEqual(
+    Object.keys(result).sort(),
+    ['action', 'averageSpeedMps', 'count', 'nearest', 'ok', 'radiusKm'],
+  );
+  for (const entry of result.nearest) {
+    assert.deepEqual(Object.keys(entry).sort(), ['headingDeg', 'speedMps', 'token']);
+  }
+  assert.ok(queried.center, 'a view-target center was resolved and passed through');
+  assert.equal(queried.radiusM, 2000);
 });
 
 test('tracked aircraft yields to strongest-fire and vessel voice flights before either flight begins', async () => {
@@ -729,7 +856,9 @@ test('Data Layers voice inventory hides the Context coordinator while current-vi
   const runner = createGevActionRunner({ viewer, styleManager, dataManager });
   const menu = await runner('show_data_layers_menu');
   assert.deepEqual(menu.layers.map(({ id }) => id), ['flights']);
-  const current = await runner('get_current_view_state');
+  const currentWithoutLayers = await runner('get_current_view_state');
+  assert.equal(currentWithoutLayers.layers, undefined, 'the layer inventory is opt-in, not returned by default');
+  const current = await runner('get_current_view_state', { includeLayers: true });
   assert.deepEqual(current.layers.map(({ id }) => id), ['flights', 'military-awareness']);
   // The Contacts mode's internal id is 'flights'; the tools accept 'contacts'.
   // State output reports the accepted word so the model cannot read its own

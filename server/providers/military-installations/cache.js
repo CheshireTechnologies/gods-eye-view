@@ -2,7 +2,7 @@ import {
   MILITARY_INSTALLATION_CACHE_MS,
   MILITARY_INSTALLATION_ELEMENT_CAP,
   MILITARY_INSTALLATION_DISK_TTL_MS,
-  MILITARY_INSTALLATION_DISK_DIR,
+  militaryInstallationDiskDir,
   MILITARY_INSTALLATION_MAX_CACHE,
 } from './constants.js';
 import path from 'node:path';
@@ -92,7 +92,7 @@ function militaryInstallationDiskFresh(
 /** Cache key -> stable disk-cache file path. */
 function militaryInstallationDiskPath(
   cacheKey,
-  dir = MILITARY_INSTALLATION_DISK_DIR,
+  dir = militaryInstallationDiskDir(),
 ) {
   return path.join(
     dir,
@@ -108,7 +108,7 @@ function militaryInstallationDiskPath(
 async function readMilitaryInstallationDisk(
   cacheKey,
   maxAgeMs,
-  dir = MILITARY_INSTALLATION_DISK_DIR,
+  dir = militaryInstallationDiskDir(),
 ) {
   try {
     const entry = JSON.parse(
@@ -131,7 +131,7 @@ async function readMilitaryInstallationDisk(
 async function writeMilitaryInstallationDisk(
   cacheKey,
   entry,
-  dir = MILITARY_INSTALLATION_DISK_DIR,
+  dir = militaryInstallationDiskDir(),
 ) {
   const target = militaryInstallationDiskPath(cacheKey, dir);
   // Same directory, so the rename is atomic on POSIX rather than a cross-device copy.

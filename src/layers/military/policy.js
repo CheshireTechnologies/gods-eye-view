@@ -268,6 +268,15 @@ export const TRACKED_MODEL_MAX_LOAD_FAILS = 3;
 
 export const TRACKED_MODEL_RETRY_BACKOFF_MS = 1500;
 
+/** @constant {number} How long a track survives a layer disable→re-enable
+ *  cycle (tracking persistence, configurable via trackingPersistence.js)
+ *  before it is treated as confirmed gone rather than mid-refresh. Mirrors
+ *  layerState.js's SHARE_TRACKING_RESTORE_POLICIES.military.expiryWindowMs —
+ *  kept as a sibling constant rather than a cross-module import so
+ *  layers/military never depends on data/layerState.js. */
+
+export const REFRESH_TRACKING_EXPIRY_MS = 45_000;
+
 /** Boost flip = BATCHED release through the fleet tick (mirror of flights.js —
  *  destroying the whole fleet synchronously in the style handler stalls the
  *  render thread). Models tagged with their load-time boost state; stale queue

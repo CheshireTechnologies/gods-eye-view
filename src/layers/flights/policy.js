@@ -302,6 +302,15 @@ export const TRACKED_MODEL_MAX_LOAD_FAILS = 3;
 
 export const TRACKED_MODEL_RETRY_BACKOFF_MS = 1500;
 
+/** @constant {number} How long a track survives a layer disable→re-enable
+ *  cycle (tracking persistence, configurable via trackingPersistence.js)
+ *  before it is treated as confirmed gone rather than mid-refresh. Mirrors
+ *  layerState.js's SHARE_TRACKING_RESTORE_POLICIES.flights.expiryWindowMs —
+ *  kept as a sibling constant rather than a cross-module import so
+ *  layers/flights never depends on data/layerState.js. */
+
+export const REFRESH_TRACKING_EXPIRY_MS = 90_000;
+
 /** @constant {number} Cap on NEW cells the display corridors may add to one
  *  poll's warm/sample batch — a view full of ground traffic must not balloon
  *  it. Cells the poll already collected are free (deduped before budgeting). */

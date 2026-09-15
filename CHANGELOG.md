@@ -1,5 +1,29 @@
 # Changelog
 
+## Free-text world news search (voice)
+
+- Add a `search_news` voice tool answering real-world news questions independent of camera position ("what happened in Nepal", "the recent landslide") — previously only the cockpit's camera-tracked Regional News page could surface headlines, so nothing answered an arbitrary place/topic question.
+- Reuse the existing free Google News RSS / GDELT pipeline, extended with progressively wider GDELT lookback windows (48h → 1 week → 1 month → 3 months) so a quieter or slightly older story still surfaces instead of only breaking news from the last few hours.
+- When live search truly finds nothing, the `/api/news-search` proxy may attach a best-effort `modelKnowledge` answer from the local, optional Ollama model (same free/local provider `semantic_query` uses) — always labeled unverified/not live-sourced, never presented as a citation.
+- Updated Realtime instructions so news questions route to `search_news` instead of being treated as ordinary conversation (which had no live source and could only guess).
+
+## Leaner voice responses, per-family tracking, external cache root
+
+- `get_current_view_state` no longer returns the full layer inventory by default (opt in with `includeLayers:true`) — it was cluttering every response regardless of what was asked.
+- Tracking start points are now per layer family (aircraft/vessel/satellite each keep their own), not one global slot that any new track overwrote. Note: the layers themselves still enforce single active camera-follow, so this avoids compounding data loss rather than delivering fully concurrent tracking — see `docs/CURRENT-STATE.md` for the full explanation.
+- Every provider's on-disk cache (Overpass, military installations, terrain, FIRMS, TomTom, CelesTrak, Launch Library, adsbdb, Ollama) can now be redirected as a group via `GEV_CACHE_DIR` — e.g. to an external drive for faster/larger persistent caching that survives a reinstall. Defaults to the existing `.gev-cache` location; falls back automatically if the configured path isn't reachable at startup.
+
+## Tracking start point and elapsed time
+
+- Record where and when a `track_entity` session began (start lat/lon/altitude, start time), replaced by each new successful track and cleared by `stop_tracking`.
+- `get_current_view_state` now reports elapsed time, distance traveled, and average speed since tracking started for the entity currently being tracked, so voice can answer "how far/long has it gone since I started tracking it".
+
+## Local semantic search (Ollama)
+
+- Add a `semantic_query` voice tool answering fuzzy/descriptive questions over live layer data ("ships behaving oddly near the coast") that `analyst_query`'s exact filters can't express, sharing its record gathering and spatial scoping.
+- Add a local, optional Ollama provider (`server/providers/ollama/`) for embeddings and narrative generation — no API key, no cloud call, no cost. Entirely additive: `analyst_query`, `get_entity_context`, and OpenAI Realtime voice control are unchanged whether or not Ollama is running.
+- Cache embeddings and narratives on disk/memory following the existing Overpass/military-installations idiom, and report Ollama reachability/model status in `npm run doctor`.
+
 - Let CLI tools, development launchers and the setup doctor use an explicit project directory while retaining their existing default paths.
 
 - Split application scene, controls, catalog, tools and HTML into reusable components; configure application request services and sources without changing global fetch. Preserve standalone markup and voice behavior. Explicit annotation navigation may resolve a distant named target.

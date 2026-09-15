@@ -161,7 +161,28 @@ export function createTesting({
       trailMmsi: state.trailMmsi,
       trailPositionCount: state.trailPositions.length,
       vesselCount: state.vesselMap.size,
+      pendingSelectionRestore: state._pendingSelectionRestore,
     };
+  }
+
+  /** Drive the tracking-persistence arm/restore pair directly, bypassing the
+   *  full enable()/disable() lifecycle (which needs a real Cesium viewer for
+   *  its click-handler/sprite-order machinery) — test-only seam. */
+
+  function _armRefreshSelectionRestoreForTest() {
+    components.selection._armRefreshSelectionRestore();
+  }
+
+  function _attemptRefreshSelectionRestoreForTest() {
+    return components.selection._attemptRefreshSelectionRestore();
+  }
+
+  /** Remove one record from vesselMap without touching any other state
+   *  (unlike _setVesselStateForTest, which resets everything) — lets a test
+   *  simulate "vanished while disabled" against an already-armed latch. */
+
+  function _deleteVesselFromMapForTest(mmsi) {
+    state.vesselMap.delete(mmsi);
   }
   return {
     _bindVesselInteractionForTest,
@@ -175,5 +196,8 @@ export function createTesting({
     _setAisRuntimeForTest,
     _getVesselFeedStateForTest,
     _getVesselStateForTest,
+    _armRefreshSelectionRestoreForTest,
+    _attemptRefreshSelectionRestoreForTest,
+    _deleteVesselFromMapForTest,
   };
 }

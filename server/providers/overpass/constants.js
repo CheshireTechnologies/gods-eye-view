@@ -1,4 +1,4 @@
-import path from 'node:path';
+import { gevCacheDir } from '../common/cache-root.js';
 
 // ---------------------------------------------------------------------------
 // Overpass API proxy constants and cache state
@@ -37,8 +37,19 @@ const OVERPASS_DISK_TTL_MS = 7 * 86_400_000;
  */
 const OVERPASS_BOUNDARY_DISK_TTL_MS = 30 * 86_400_000;
 
-/** Disk-cache directory for Overpass responses. */
-const OVERPASS_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'overpass');
+/**
+ * Disk-cache directory for Overpass responses. A FUNCTION, not a constant:
+ * this module is statically imported (via local.js) from the top of
+ * server/standalone/vite.config.js, which runs its `loadEnv()` — the thing
+ * that puts GEV_CACHE_DIR into process.env — only later, inside its
+ * `defineConfig` callback. Resolving this eagerly at import time freezes it
+ * to the un-redirected default before GEV_CACHE_DIR is ever read, silently
+ * stranding every disk read/write in an empty local folder instead of the
+ * configured cache root. Every call site must call this, not cache its result.
+ */
+function overpassDiskDir() {
+  return gevCacheDir('overpass');
+}
 
 /** Per-upstream fetch timeout (ms). */
 const OVERPASS_TIMEOUT_MS = 22000;
@@ -114,7 +125,7 @@ const OVERPASS_BBOX_RE =
 export {
   OVERPASS_BOUNDARY_DISK_TTL_MS,
   OVERPASS_DISK_TTL_MS,
-  OVERPASS_DISK_DIR,
+  overpassDiskDir,
   OVERPASS_CACHE_MS,
   OVERPASS_CACHE_MAX_ENTRIES,
   OVERPASS_MAX_BODY_BYTES,

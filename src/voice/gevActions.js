@@ -12,6 +12,7 @@ import { getNextIssPass } from '../data/satellites.js';
 import { CCTV_FOCUS_RESULT } from '../data/cctv.js';
 import { contextModeWord } from '../contextModePolicy.js';
 import { createAnalystEngine } from '../data/analystEngine.js';
+import { createSemanticEngine } from '../data/semanticEngine.js';
 import { layerFeedState } from '../data/manager.js';
 import militaryAwarenessLayer, {
   collectAircraftProximityWindow,
@@ -24,6 +25,8 @@ import { unavailablePlaceSearch } from '../search/placeSearch.js';
 import { resolveRegionRingForQuery } from '../annotations/annotationResolver.js';
 import { normalizeRadioCountryInput } from '../data/radioCountry.js';
 import { TR3B_CLASS } from '../data/tr3bRegistry.js';
+import { searchNews } from '../data/newsSearch.js';
+import { setTrackingPersistenceEnabled } from '../data/trackingPersistence.js';
 
 const ALLOWED_STYLES = new Set(['normal', 'retro', 'surveillance', 'thermal', 'anime', 'noir', 'snow']);
 const PANEL_ALIASES = new Map([
@@ -799,6 +802,18 @@ export function createGevActionRunner({ viewer, styleManager, dataManager, scene
       return runAnalystQuery(viewer, dataManager, args, placeSearch);
     }
 
+    if (name === 'semantic_query') {
+      return runSemanticQuery(viewer, dataManager, args, placeSearch);
+    }
+
+    if (name === 'search_news') {
+      return runSearchNews(args, { signal: runOptions.signal });
+    }
+
+    if (name === 'prepare_code_change') {
+      return prepareCodeChange(args);
+    }
+
     if (name === 'move_camera') {
       return moveCamera(args, (navigate, releaseOptions) => runManagedVoiceNavigation(
         styleManager, 'camera', 'move_camera', navigate, releaseOptions,
@@ -820,7 +835,7 @@ export function createGevActionRunner({ viewer, styleManager, dataManager, scene
     }
 
     if (name === 'get_current_view_state') {
-      return getCurrentViewState(viewer, styleManager, dataManager, sceneDirector);
+      return getCurrentViewState(viewer, styleManager, dataManager, sceneDirector, args);
     }
 
     if (name === 'set_hud') {
@@ -892,8 +907,17 @@ export function createGevActionRunner({ viewer, styleManager, dataManager, scene
       return stopAllTracking(viewer, dataManager);
     }
 
+    if (name === 'set_tracking_persistence') {
+      const enabled = setTrackingPersistenceEnabled(args.enabled);
+      return { ok: true, action: 'set_tracking_persistence', enabled };
+    }
+
     if (name === 'frame_overhead') {
       return frameOverhead(viewer, dataManager, styleManager, args);
+    }
+
+    if (name === 'nearby_vehicles') {
+      return nearbyVehicles(viewer, dataManager, args);
     }
 
     if (name === 'annotate_map') {
@@ -1680,6 +1704,23 @@ async function trackEntity(viewer, dataManager, styleManager, args = {}) {
         trackedOk = !!module.trackById?.(found.icao24, { origin: 'voice' });
       }
 
+      const label = formatTrackedEntityLabel(found, query);
+      // Record where and when THIS tracking session started, so later
+      // questions ("how far/long has it gone?") can be answered against it —
+      // read back via get_current_view_state's tracked[].since. A new
+      // successful track replaces any previous start point outright.
+      if (trackedOk) {
+        recordTrackingStart({
+          layerId: family.layerId,
+          kind: family.kind,
+          id: found.mmsi ?? found.icao24 ?? found.noradId ?? null,
+          label,
+          latitude: found.latitude,
+          longitude: found.longitude,
+          altitudeM: found.altitudeM,
+        });
+      }
+
       return {
         ok: trackedOk,
         action: 'track_entity',
@@ -1689,7 +1730,7 @@ async function trackEntity(viewer, dataManager, styleManager, args = {}) {
         // registration → icao24) so the spoken name matches what the UI shows;
         // `registration` is absent on vessels/satellites and simply falls
         // through to their own name/id links.
-        label: formatTrackedEntityLabel(found, query),
+        label,
         latitude: found.latitude ?? null,
         longitude: found.longitude ?? null,
         altitudeM: Number.isFinite(found.altitudeM) ? Math.round(found.altitudeM) : null,
@@ -1743,6 +1784,7 @@ function stopAllTracking(viewer, dataManager) {
     }
   }
   if (viewer) viewer.trackedEntity = undefined;
+  _trackingStarts.clear();
   if (failed.size) {
     const failedLayerIds = [...failed];
     return {
@@ -1833,6 +1875,41 @@ async function frameOverhead(viewer, dataManager, styleManager, args = {}) {
   });
 }
 
+/**
+ * Anonymous, ephemeral vehicle roster near the current view (or camera when
+ * no view target resolves), sourced from the traffic layer's privacy-
+ * preserving anonymousVehicleTracking.js. The narrated summary and its
+ * `nearest` entries never carry anything beyond {token, speedMps,
+ * headingDeg} — no position, no anything identity-shaped.
+ */
+function nearbyVehicles(viewer, dataManager, args = {}) {
+  if (!dataManager.isEnabled('traffic')) {
+    return { ok: false, action: 'nearby_vehicles', error: 'The Traffic layer is not enabled' };
+  }
+  const module = dataManager.layers.get('traffic')?.module;
+  if (typeof module?.getAnonymousVehiclesInRange !== 'function') {
+    return { ok: false, action: 'nearby_vehicles', error: 'Vehicle tracking is unavailable' };
+  }
+  const radiusKm = clampNumber(args.radiusKm, 0.1, 5, 1);
+  const center = getViewTargetCartesian(viewer) || viewer.camera.positionWC;
+  const vehicles = module.getAnonymousVehiclesInRange(center, radiusKm * 1000) || [];
+  const averageSpeedMps = vehicles.length
+    ? vehicles.reduce((sum, v) => sum + (v.speedMps || 0), 0) / vehicles.length
+    : 0;
+  return {
+    ok: true,
+    action: 'nearby_vehicles',
+    radiusKm,
+    count: vehicles.length,
+    averageSpeedMps: Math.round(averageSpeedMps * 10) / 10,
+    nearest: vehicles.slice(0, 5).map((v) => ({
+      token: v.token,
+      speedMps: v.speedMps,
+      headingDeg: v.headingDeg,
+    })),
+  };
+}
+
 /** Run one validated voice camera mutation through the UI-owned authority seam. */
 function runManagedVoiceNavigation(styleManager, noun, action, navigate, releaseOptions = undefined) {
   if (typeof styleManager?.runImmediateNavigation !== 'function') {
@@ -1851,7 +1928,14 @@ function collectTrackedEntities(dataManager) {
     if (!module) continue;
     try {
       const info = family.kind === 'vessel' ? module.getSelectedInfo?.() : module.getTrackedInfo?.();
-      if (info) tracked.push({ kind: family.kind, layerId: family.layerId, ...info });
+      if (info) {
+        tracked.push({
+          kind: family.kind,
+          layerId: family.layerId,
+          ...info,
+          ...trackingSinceFor(family.layerId, info),
+        });
+      }
     } catch {
       // layer not ready
     }
@@ -2321,7 +2405,7 @@ function normalizeLocationId(value) {
   return null;
 }
 
-function getCurrentViewState(viewer, styleManager, dataManager, sceneDirector = null) {
+function getCurrentViewState(viewer, styleManager, dataManager, sceneDirector = null, args = {}) {
   const cartographic = Cesium.Cartographic.fromCartesian(viewer.camera.positionWC);
   return {
     ok: true,
@@ -2346,13 +2430,20 @@ function getCurrentViewState(viewer, styleManager, dataManager, sceneDirector = 
     controls: typeof styleManager.getControlState === 'function' ? styleManager.getControlState() : null,
     scenePlayback: sceneDirector?.getPlaybackStatus?.() || null,
     tracked: collectTrackedEntities(dataManager),
-    layers: dataManager.getAll().map((layer) => ({
-      id: layer.id,
-      name: layer.name,
-      enabled: layer.enabled,
-      count: layer.stats?.count || 0,
-      error: layer.stats?.error || null,
-    })),
+    // The full layer inventory is rarely what a question is actually about —
+    // it was cluttering every response regardless of what was asked. Opt in
+    // with includeLayers:true for "what layers are on/available" questions.
+    ...(args?.includeLayers
+      ? {
+        layers: dataManager.getAll().map((layer) => ({
+          id: layer.id,
+          name: layer.name,
+          enabled: layer.enabled,
+          count: layer.stats?.count || 0,
+          error: layer.stats?.error || null,
+        })),
+      }
+      : {}),
   };
 }
 
@@ -3226,6 +3317,76 @@ function clampNumber(value, min, max, fallback) {
 /** layerId → epoch ms of last voice-driven enable (analyst warm-up honesty). */
 const _layerEnabledAt = new Map();
 let _analystEngine = null;
+let _semanticEngine = null;
+
+/**
+ * Start point + start time per LAYER FAMILY, so tracking a vessel doesn't
+ * erase an aircraft's start-point data (and vice versa) — each family keeps
+ * its own record, set by trackEntity() on a successful track, cleared
+ * wholesale by stopAllTracking(). A new successful track_entity for a given
+ * layer still replaces only THAT layer's record.
+ *
+ * Note: the underlying layers today still enforce single active camera-follow
+ * — taking camera ownership for a new family stops the previous family's
+ * layer-level tracking too (see _releaseFollowCamera), so in practice only
+ * one family's `since` data is normally live at once. This Map exists so that
+ * constraint isn't compounded by cross-family data loss on top of it.
+ * @type {Map<string, {layerId: string, kind: string, id: string|null, label: string|null, startLat: number|null, startLon: number|null, startAltitudeM: number|null, startedAt: number}>}
+ */
+const _trackingStarts = new Map();
+
+/** The id field that identifies a tracked/selected entity, regardless of family. */
+function trackedEntityId(info) {
+  return info?.icao24 ?? info?.mmsi ?? info?.noradId ?? null;
+}
+
+/** Begin a new tracking-start record for one layer, replacing that layer's previous record only. */
+function recordTrackingStart({ layerId, kind, id, label, latitude, longitude, altitudeM }) {
+  _trackingStarts.set(layerId, {
+    layerId,
+    kind,
+    id: id ?? null,
+    label: label ?? null,
+    startLat: Number.isFinite(latitude) ? latitude : null,
+    startLon: Number.isFinite(longitude) ? longitude : null,
+    startAltitudeM: Number.isFinite(altitudeM) ? altitudeM : null,
+    startedAt: Date.now(),
+  });
+}
+
+/**
+ * Elapsed time and distance traveled from the recorded start point to a
+ * live tracked-entity descriptor's CURRENT position, or {} when nothing is
+ * being tracked on this layer, tracking started on a different entity, or
+ * the entity changed underneath the recorded start (a new track_entity call
+ * replaces the record instead of extending it).
+ */
+function trackingSinceFor(layerId, info) {
+  const start = _trackingStarts.get(layerId);
+  if (!start) return {};
+  const liveId = trackedEntityId(info);
+  if (start.id !== null && liveId !== null && start.id !== liveId) return {};
+  const elapsedSeconds = Math.max(0, Math.round((Date.now() - start.startedAt) / 1000));
+  const distanceFromStartKm = (Number.isFinite(start.startLat) && Number.isFinite(start.startLon)
+    && Number.isFinite(info.latitude) && Number.isFinite(info.longitude))
+    ? Math.round(haversineKm(start.startLat, start.startLon, info.latitude, info.longitude) * 10) / 10
+    : null;
+  // Average speed is noisy over a few seconds of dead-reckoned motion; only
+  // report it once there is enough elapsed time for it to mean something.
+  const averageSpeedKmh = (distanceFromStartKm !== null && elapsedSeconds >= 5)
+    ? Math.round((distanceFromStartKm / (elapsedSeconds / 3600)) * 10) / 10
+    : null;
+  return {
+    since: {
+      startedAt: new Date(start.startedAt).toISOString(),
+      elapsedSeconds,
+      startLatitude: start.startLat,
+      startLongitude: start.startLon,
+      distanceFromStartKm,
+      averageSpeedKmh,
+    },
+  };
+}
 /** Layers whose loaded set follows the camera, so a loaded count is not a world count. */
 const VIEWPORT_LOADED_LAYERS = new Set(['flights']);
 
@@ -3389,4 +3550,131 @@ async function runAnalystQuery(viewer, dataManager, args = {}, placeSearch = una
       : {}),
     ...(countsReconciliation ? { countsReconciliation } : {}),
   };
+}
+
+/** POST a batch of texts to the local Ollama embeddings proxy. */
+async function embedViaOllama(texts) {
+  const response = await fetch('/api/ollama/embeddings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ texts }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !Array.isArray(data?.vectors)) {
+    throw new Error(data?.error || `Embeddings request failed (${response.status})`);
+  }
+  return data.vectors;
+}
+
+/** POST ranked matches to the local Ollama narrative proxy. */
+async function narrateViaOllama(query, matches) {
+  const response = await fetch('/api/ollama/narrate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query,
+      matches: matches.map((m) => ({ summary: m.summary, score: m.score })),
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || typeof data?.narrative !== 'string') {
+    throw new Error(data?.error || `Narrate request failed (${response.status})`);
+  }
+  return data.narrative;
+}
+
+/**
+ * Semantic query — fuzzy, descriptive questions over the same live data
+ * analyst_query answers exactly ("ships behaving oddly near the coast" vs.
+ * "ships with speedKts < 1"). Shares the analyst engine for record gathering
+ * and spatial scoping, so the two tools never disagree about what "in view"
+ * or "near X" means; only the ranking pass differs, via a local Ollama model.
+ */
+async function runSemanticQuery(viewer, dataManager, args = {}, placeSearch = unavailablePlaceSearch) {
+  if (!_analystEngine) _analystEngine = createAnalystEngine(analystProviders(viewer, dataManager, { placeSearch }));
+  if (!_semanticEngine) {
+    _semanticEngine = createSemanticEngine({
+      analystEngine: _analystEngine,
+      embed: embedViaOllama,
+      narrate: narrateViaOllama,
+    });
+  }
+  const result = await _semanticEngine.query({
+    layers: Array.isArray(args.layers) ? args.layers : undefined,
+    scope: args.scope,
+    query: args.query,
+    limit: args.limit,
+  });
+  if (!result.ok) {
+    return { ok: false, action: 'semantic_query', error: result.error, coverage: result.coverage };
+  }
+  return {
+    ok: true,
+    action: 'semantic_query',
+    query: args.query,
+    scopeLabel: result.scopeLabel,
+    matches: result.matches,
+    narrative: result.narrative,
+    coverage: result.coverage,
+  };
+}
+
+/**
+ * Free-text world news search — "what happened in Nepal", "the Texas
+ * flooding" — independent of wherever the camera happens to be. Uses the
+ * app's free Google News RSS / GDELT pipeline with widening lookback windows;
+ * when that truly finds nothing, the server may attach a clearly-unverified
+ * modelKnowledge answer from a local Ollama model as a last resort.
+ */
+async function runSearchNews(args = {}, { signal } = {}) {
+  const query = String(args.query || '').trim();
+  if (!query) {
+    return { ok: false, action: 'search_news', error: 'query is required' };
+  }
+  try {
+    const result = await searchNews(query, { signal });
+    return {
+      ok: true,
+      action: 'search_news',
+      query: result.query,
+      status: result.status,
+      source: result.source,
+      timespan: result.timespan,
+      articles: result.articles,
+      modelKnowledge: result.modelKnowledge || null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      action: 'search_news',
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Voice cannot edit the app's own source — that would mean a network- and
+ * mic-reachable path to arbitrary file writes, which this project
+ * deliberately refuses. Instead this distills the discussed change into the
+ * exact local `npm run ai-edit` command (the reviewed, human-in-the-loop
+ * Ollama coding tool in scripts/ai-edit.mjs) and copies it to the clipboard
+ * so "let's discuss, then implement" has a real next step instead of a
+ * flat "I can't".
+ */
+async function prepareCodeChange(args = {}) {
+  const instruction = String(args.instruction || '').trim();
+  if (!instruction) {
+    return { ok: false, action: 'prepare_code_change', error: 'instruction is required' };
+  }
+  const command = `npm run ai-edit -- "${instruction.replace(/(["\\$`])/g, '\\$1')}"`;
+  let copied = false;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(command);
+      copied = true;
+    }
+  } catch {
+    copied = false; // Clipboard permission/user-activation can lapse by the time this fires.
+  }
+  return { ok: true, action: 'prepare_code_change', instruction, command, copied };
 }

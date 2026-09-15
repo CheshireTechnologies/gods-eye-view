@@ -251,6 +251,8 @@ export class StyleManager {
     this._layerStateRestorePromise = null;
     this._awarenessSelectedHandler = null;
     this._awarenessClearedHandler = null;
+    this._entitySelectedHandler = null;
+    this._entityClearedHandler = null;
     this._disposed = false;
 
     // DOM refs
@@ -2281,6 +2283,37 @@ export class StyleManager {
   }
 
   /**
+   * Tracking-persistence UI feedback (configurable, see
+   * src/data/trackingPersistence.js): every layer's refresh-restore latch
+   * re-tracks with `origin: 'refresh-restore'` on success, or fires the
+   * cleared event with `reason: 'refresh-expired'` on confirmed
+   * disappearance (both flow through the same awareness-event channel
+   * `_persistAwarenessSelection` already listens on, above). This is
+   * deliberately separate from that function — durable-state persistence and
+   * transient UI notices are different concerns, and a refresh-restore's
+   * passive origin is intentionally excluded from durable state there.
+   * @param {CustomEvent} event
+   * @param {boolean} cleared
+   */
+  _handleRefreshTrackingNotice(event, cleared) {
+    const detail = event?.detail || {};
+    const label = String(detail.label || 'target').trim() || 'target';
+    if (!cleared && detail.origin === 'refresh-restore') {
+      this._showGlobalStatusNotice('TRACKING RESTORED', {
+        state: 'complete',
+        detail: label,
+      });
+      return;
+    }
+    if (cleared && detail.reason === 'refresh-expired') {
+      this._showGlobalStatusNotice('TRACKING LOST', {
+        state: 'error',
+        detail: `${label} no longer detected`,
+      });
+    }
+  }
+
+  /**
    * Connects the layer data manager for traffic sync, CCTV state subscription,
    * and layer enable/disable operations.
    * @param {object|null} dataManager - The DataManager instance, or null to detach.
@@ -2306,10 +2339,14 @@ export class StyleManager {
     this._cctvControls.connect();
     this._radioControls.connect();
     if (!this._awarenessSelectedHandler) {
-      this._awarenessSelectedHandler = (event) =>
+      this._awarenessSelectedHandler = (event) => {
         this._persistAwarenessSelection(event, false);
-      this._awarenessClearedHandler = (event) =>
+        this._handleRefreshTrackingNotice(event, false);
+      };
+      this._awarenessClearedHandler = (event) => {
         this._persistAwarenessSelection(event, true);
+        this._handleRefreshTrackingNotice(event, true);
+      };
       window.addEventListener(
         'gev:awareness-subject-selected',
         this._awarenessSelectedHandler,
@@ -2317,6 +2354,22 @@ export class StyleManager {
       window.addEventListener(
         'gev:awareness-subject-cleared',
         this._awarenessClearedHandler,
+      );
+      // Vessels are a selectable-but-not-camera-tracked layer, so they publish
+      // through contextStore.js's separate entity-* lane instead of the
+      // tracking layers' awareness-subject-* lane (see that file's header
+      // comments). Tracking-persistence restore/expiry notices still need to
+      // reach the SAME UI feedback, so listen here too — durable-state
+      // persistence (_persistAwarenessSelection) does not apply to vessels
+      // and is deliberately not called from these two handlers.
+      this._entitySelectedHandler = (event) =>
+        this._handleRefreshTrackingNotice(event, false);
+      this._entityClearedHandler = (event) =>
+        this._handleRefreshTrackingNotice(event, true);
+      window.addEventListener('gev:entity-selected', this._entitySelectedHandler);
+      window.addEventListener(
+        'gev:entity-selection-cleared',
+        this._entityClearedHandler,
       );
     }
     this._layerStateCoordinator?.destroy();
@@ -5352,6 +5405,17 @@ export class StyleManager {
         this._awarenessClearedHandler,
       );
       this._awarenessClearedHandler = null;
+    }
+    if (this._entitySelectedHandler) {
+      window.removeEventListener('gev:entity-selected', this._entitySelectedHandler);
+      this._entitySelectedHandler = null;
+    }
+    if (this._entityClearedHandler) {
+      window.removeEventListener(
+        'gev:entity-selection-cleared',
+        this._entityClearedHandler,
+      );
+      this._entityClearedHandler = null;
     }
 
     // Invalidate any in-flight Context transaction the same way a newer request

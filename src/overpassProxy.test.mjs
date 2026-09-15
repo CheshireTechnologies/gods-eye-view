@@ -11,7 +11,7 @@ import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import createViteConfig, { fetchOverpassPayload, overpassPayloadIsData, readOverpassDisk } from '../vite.config.js';
+import createViteConfig, { fetchOverpassPayload, overpassPayloadIsData, readOverpassDisk, overpassDiskDir } from '../vite.config.js';
 
 const ENDPOINTS = ['https://a.example/api', 'https://b.example/api', 'https://c.example/api'];
 
@@ -41,7 +41,11 @@ const DATA = { status: 200, body: '{"elements":[]}' };
 
 test('disk cache rejects old refusals for fresh and stale reads but preserves last-good data', async () => {
   const key = `overpass-cache-regression-${randomUUID()}`;
-  const directory = path.join(process.cwd(), '.gev-cache', 'overpass');
+  // Not a hardcoded path: createViteConfig() (called elsewhere in this file)
+  // loads the real .env into process.env as a side effect, including
+  // GEV_CACHE_DIR — so the disk cache directory can move mid-process, and
+  // this must resolve it the same way the code under test does, right now.
+  const directory = overpassDiskDir();
   const file = path.join(directory, `${createHash('sha1').update(key).digest('hex')}.json`);
   await mkdir(directory, { recursive: true });
   try {
@@ -187,7 +191,11 @@ test('coalesced outage callers both receive last-good data, never a cached refus
   for (const status of [406, 503, 429]) {
     const query = `[out:json][timeout:12];node(around:10,30.27,-97.74)["name"="${randomUUID()}"];out;`;
     const body = `data=${encodeURIComponent(query)}`;
-    const directory = path.join(process.cwd(), '.gev-cache', 'overpass');
+    // Not a hardcoded path: createViteConfig() (called elsewhere in this file)
+  // loads the real .env into process.env as a side effect, including
+  // GEV_CACHE_DIR — so the disk cache directory can move mid-process, and
+  // this must resolve it the same way the code under test does, right now.
+  const directory = overpassDiskDir();
     const file = path.join(directory, `${createHash('sha1').update(body).digest('hex')}.json`);
     await mkdir(directory, { recursive: true });
     const stale = { ...DATA, cachedAt: Date.now() - 40 * 86400000 };

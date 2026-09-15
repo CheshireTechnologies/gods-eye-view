@@ -601,6 +601,21 @@ body:has(.data-toggle-row[data-layer-id='alpr-cameras'] .data-toggle-btn.active)
   font-weight: 300;
 }
 
+#title-bar .title-edition {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--accent);
+  vertical-align: middle;
+  transform: translateY(-2px);
+}
+
 #title-bar .subtitle {
   font-family: var(--font-mono);
   font-size: 11px;

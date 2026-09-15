@@ -94,6 +94,12 @@ export function createVesselState({ source, services }) {
     activeFocusCount: 0,
     activeLabelCount: 0,
     selectedRecord: null,
+    /** @type {{mmsi: string, label: string, armedAtMs: number, reason: 'refresh'}|null}
+     *  Tracking-persistence latch (see trackingPersistence.js): armed by
+     *  selection.js's _armRefreshSelectionRestore() when disable() finds a
+     *  vessel selected, consumed once by _attemptRefreshSelectionRestore()
+     *  on the next enable(). */
+    _pendingSelectionRestore: null,
     /** @type {{setPositions: Function, clear: Function, destroy: Function}|null} Selected-vessel fading trail */
     trail: null,
     /** @type {Cesium.Cartesian3[]} Chronological trail vertices (oldest first) */

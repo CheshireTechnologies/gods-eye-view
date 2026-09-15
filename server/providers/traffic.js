@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 
+import { gevCacheDir } from './common/cache-root.js';
 import {
   isValidTileCoord as isValidTomTomTile,
   utcDayKey as tomtomUtcDayKey,
@@ -35,7 +36,7 @@ import {
  */
 export function tomtomProxy() {
   const TILE_TTL_MS = 120_000;
-  const CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'tomtom');
+  const CACHE_DIR = gevCacheDir('tomtom');
   const BUDGET_PATH = path.join(CACHE_DIR, 'budget.json');
   const DEFAULT_DAILY_BUDGET = 40000;
   const MEM_MAX_ENTRIES = 256;

@@ -18,6 +18,7 @@ export function createApplicationRequestServices({
     boundaries: '/api/overpass',
     terrain: '/api/terrain/heights',
     regional: '/api/regional-brief',
+    newsSearch: '/api/news-search',
     weather: '/api/weather-effects',
     summary: '/api/openai/hud-summary',
     ...endpoints,
@@ -103,6 +104,17 @@ export function createApplicationRequestServices({
         return requireOk(
           await request(pointUrl(urls.regional, latitude, longitude), options),
           'Regional brief',
+        );
+      },
+    },
+    newsSearch: {
+      async search(query, { signal } = {}) {
+        return requireOk(
+          await request(
+            `${urls.newsSearch}?${new URLSearchParams({ q: String(query ?? '') })}`,
+            { signal },
+          ),
+          'News search',
         );
       },
     },

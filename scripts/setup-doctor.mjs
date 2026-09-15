@@ -177,13 +177,65 @@ export function inspectSetup({ includeKeychain = true, authoritativeEnvironment 
   };
 }
 
+/**
+ * Probe a local Ollama server for the semantic_query voice tool. Kept
+ * separate from inspectSetup (which stays synchronous and credential-only,
+ * matching every other capability check) since this one needs a live network
+ * probe. Never throws — an unreachable/misconfigured Ollama just reports
+ * reachable:false, the same "off until configured" honesty as every other
+ * optional capability here.
+ */
+export async function checkOllamaStatus({
+  baseUrl = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
+  embedModel = process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text',
+  chatModel = process.env.OLLAMA_CHAT_MODEL || 'qwen2.5:3b-instruct',
+  timeoutMs = 1500,
+  fetchImpl = fetch,
+} = {}) {
+  const base = { baseUrl, embedModel, chatModel, embedModelPresent: false, chatModelPresent: false };
+  try {
+    const response = await fetchImpl(`${baseUrl}/api/tags`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) return { ...base, reachable: false };
+    const data = await response.json();
+    const names = Array.isArray(data?.models)
+      ? data.models.map((m) => m?.name || m?.model).filter(Boolean)
+      : [];
+    const has = (id) => names.some((n) => n === id || n.startsWith(`${id}:`));
+    return {
+      ...base,
+      reachable: true,
+      embedModelPresent: has(embedModel),
+      chatModelPresent: has(chatModel),
+    };
+  } catch {
+    return { ...base, reachable: false };
+  }
+}
+
+/** One "Local AI:" capability line from a checkOllamaStatus() result. */
+export function formatOllamaCapability(ollama) {
+  if (!ollama.reachable) {
+    return `off — Ollama not reachable at ${ollama.baseUrl} (semantic_query voice tool unavailable; analyst_query and voice control are unaffected)`;
+  }
+  const missing = [
+    !ollama.embedModelPresent ? ollama.embedModel : null,
+    !ollama.chatModelPresent ? ollama.chatModel : null,
+  ].filter(Boolean);
+  if (missing.length) {
+    return `Ollama reachable at ${ollama.baseUrl}, but missing model(s): ${missing.join(', ')} — run \`ollama pull <model>\``;
+  }
+  return `available — semantic_query using ${ollama.embedModel} + ${ollama.chatModel} at ${ollama.baseUrl}`;
+}
+
 function symbol(level) {
   if (level === 'ok') return 'OK';
   if (level === 'warn') return 'WARN';
   return 'ERROR';
 }
 
-export function formatSetupReport(report, { readyMessage } = {}) {
+export function formatSetupReport(report, { readyMessage, ollama } = {}) {
   const hasKeychainSource = Object.values(report.credentials || {})
     .some((credential) => credential?.source === 'macOS Keychain');
   const resolvedReadyMessage = readyMessage || (hasKeychainSource
@@ -203,6 +255,7 @@ export function formatSetupReport(report, { readyMessage } = {}) {
     `Fires:   ${report.capabilities.fires}`,
     `Traffic: ${report.capabilities.traffic}`,
     `Missions: ${report.capabilities.missions}`,
+    ...(ollama ? [`Local AI: ${formatOllamaCapability(ollama)}`] : []),
     '',
     'Configured providers:',
     ...CREDENTIALS.map((spec) => {
@@ -222,7 +275,8 @@ export function formatSetupReport(report, { readyMessage } = {}) {
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
 if (invokedPath === fileURLToPath(import.meta.url)) {
   const report = inspectSetup();
-  if (process.argv.includes('--json')) console.log(JSON.stringify(report, null, 2));
-  else console.log(formatSetupReport(report));
+  const ollama = await checkOllamaStatus();
+  if (process.argv.includes('--json')) console.log(JSON.stringify({ ...report, ollama }, null, 2));
+  else console.log(formatSetupReport(report, { ollama }));
   if (!report.ready) process.exitCode = 1;
 }

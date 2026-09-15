@@ -180,3 +180,14 @@ export const DOCKED_SCAN_INTERVAL_MS = 1000;
  */
 
 export const CONTEXT_REFRESH_INTERVAL_MS = 1000;
+
+/** @constant {number} How long a track survives a layer disable→re-enable
+ *  cycle (tracking persistence, configurable via trackingPersistence.js)
+ *  before it is treated as confirmed gone rather than mid-refresh. Mirrors
+ *  layerState.js's SHARE_TRACKING_RESTORE_POLICIES.satellites.expiryWindowMs
+ *  — kept as a sibling constant rather than a cross-module import so
+ *  layers/satellites never depends on data/layerState.js. Satellites get the
+ *  longest window of the three (orbits are slow, catalog rebuilds are rare
+ *  but can take a while to settle). */
+
+export const REFRESH_TRACKING_EXPIRY_MS = 300_000;

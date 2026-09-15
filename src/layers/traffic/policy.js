@@ -213,3 +213,32 @@ export const TILE_CACHE_MAX_ENTRIES = 64;
  */
 
 export const FLOW_RENDER_RACE_MS = 250;
+
+// ─── Anonymous vehicle tracking (privacy-preserving, ephemeral) ────────────
+// Derives short-lived, non-identifying "vehicle" sessions from the dot
+// simulation above. Dots already carry zero real-world identity (no plate,
+// VIN, or persistent record) — this formalizes that into a queryable roster
+// with rotating tokens instead of raw array indices, so nothing about a
+// returned session implies a stable identity beyond its own short TTL.
+// See anonymousVehicleTracking.js.
+
+/** @const {boolean} Master switch — false returns an empty roster and mints nothing. */
+
+export const ANON_VEHICLE_TRACKING_ENABLED = true;
+
+/**
+ * @const {number} Ms a minted session token stays valid. Once a dot's token
+ * ages past this, the NEXT query mints a fresh one rather than renewing it —
+ * this is the "short retention and automatic expiry" contract: a token never
+ * implies "the same vehicle" for longer than this window.
+ */
+
+export const ANON_VEHICLE_SESSION_TTL_MS = 2 * 60 * 1000;
+
+/** @const {number} Meters — hard ceiling on a query radius, independent of the caller's ask. */
+
+export const ANON_VEHICLE_MAX_RANGE_M = 5000;
+
+/** @const {number} Default max records returned by one query. */
+
+export const ANON_VEHICLE_DEFAULT_LIMIT = 100;

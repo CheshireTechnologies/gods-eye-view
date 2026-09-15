@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 
+import { gevCacheDir } from './common/cache-root.js';
 import { filterTrailing24h, parseFirmsCsv } from '../../src/data/firmsCsv.js';
 
 /**
@@ -29,7 +30,7 @@ export function firmsProxy() {
   const TTL_MS = 30 * 60_000;
   const STATUS_TTL_MS = 5 * 60_000;
   const SOURCES = ['VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT', 'VIIRS_SNPP_NRT'];
-  const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
+  const CACHE_DIR = gevCacheDir();
   const CACHE_PATH = path.join(CACHE_DIR, 'firms.json');
 
   /** @type {?{at: number, sources: Array<object>, fires: Array<object>}} */

@@ -13,6 +13,7 @@ import {
   readStaleOverpass,
   trimOverpassCache,
   writeOverpassDisk,
+  findNearbyOverpassDisk,
 } from './overpass/cache.js';
 import {
   overpassPayloadIsData,
@@ -131,6 +132,11 @@ function overpassProxy({ routing = {} } = {}) {
               sendOverpassResponse(res, stale, 'STALE');
               return;
             }
+            const nearby = await findNearbyOverpassDisk(cacheKey);
+            if (nearby) {
+              sendOverpassResponse(res, nearby, 'NEARBY');
+              return;
+            }
           }
           if (preflight.source === 'DISK') {
             _overpassCache.set(cacheKey, preflight.payload);
@@ -185,6 +191,15 @@ function overpassProxy({ routing = {} } = {}) {
             sendOverpassResponse(res, stale, 'STALE');
             return;
           }
+          // No exact-viewport cache either (every pan/zoom is a distinct
+          // cache key): an IP-level mirror block (connection refused, not a
+          // retryable 5xx) leaves NOTHING for this exact bbox. Roads from a
+          // previously-visited, overlapping viewport beat an empty layer.
+          const nearby = await findNearbyOverpassDisk(cacheKey);
+          if (nearby) {
+            sendOverpassResponse(res, nearby, 'NEARBY');
+            return;
+          }
         }
         sendOverpassResponse(res, payload, 'MISS');
       } catch (e) {
@@ -192,6 +207,11 @@ function overpassProxy({ routing = {} } = {}) {
         const stale = cacheKey ? await readStaleOverpass(cacheKey) : null;
         if (stale) {
           sendOverpassResponse(res, stale, 'STALE');
+          return;
+        }
+        const nearby = cacheKey ? await findNearbyOverpassDisk(cacheKey) : null;
+        if (nearby) {
+          sendOverpassResponse(res, nearby, 'NEARBY');
           return;
         }
         console.error('[Overpass Proxy]', e.message);

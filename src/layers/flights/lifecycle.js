@@ -196,7 +196,14 @@ export function createLifecycle({
      */
     disable(viewer) {
       parts.controller._abortActiveUpdates();
-      parts.tracking._cancelPendingTrackingRestore();
+      // A layer refresh (manual toggle, or auto-disable/recover from a feed
+      // outage) is not one of the three deliberate clear conditions (stop,
+      // switch, confirmed disappearance) — so when persistence is on, ARM a
+      // restore for whatever is currently tracked instead of forgetting it.
+      // The visual/camera teardown below (_clearTracking) is unchanged; only
+      // the memory of what was tracked survives.
+      if (flightState._trackedIcao) parts.tracking._armRefreshTrackingRestore();
+      else parts.tracking._cancelPendingTrackingRestore();
       if (flightState._billboardCollection)
         flightState._billboardCollection.show = false;
       releaseContinuousRender('flights');

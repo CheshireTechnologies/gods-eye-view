@@ -317,6 +317,15 @@
   margin-bottom: 12px;
 }
 
+.loader-edition {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+
 .loader-status {
   font-family: var(--font-mono);
   font-size: 11px;

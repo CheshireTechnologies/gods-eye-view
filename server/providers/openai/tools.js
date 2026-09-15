@@ -333,11 +333,17 @@ const GEV_REALTIME_TOOLS = [
     type: 'function',
     name: 'get_current_view_state',
     description:
-      'Read the current camera, style, Context, Cockpit, HUD, detection, map stack, post-processing, scene-playback, tracked-entity, and layer state before choosing another action.',
+      'Read the current camera, style, Context, Cockpit, HUD, detection, map stack, post-processing, scene-playback, and tracked-entity state before choosing another action. Each tracked entity carries a since block (elapsedSeconds, distanceFromStartKm, averageSpeedKmh) measured from where/when its current track_entity session began. The full per-layer inventory (every layer, enabled or not, with counts) is OMITTED by default — pass includeLayers:true only for a question actually about which layers exist/are on.',
     parameters: {
       type: 'object',
       additionalProperties: false,
-      properties: {},
+      properties: {
+        includeLayers: {
+          type: 'boolean',
+          description:
+            'Set true only when the question is about layer inventory itself ("what layers are on", "what do you have available"). Omit for ordinary camera/tracking/context questions — the list is verbose and irrelevant to those.',
+        },
+      },
     },
   },
   {
@@ -628,6 +634,20 @@ const GEV_REALTIME_TOOLS = [
   },
   {
     type: 'function',
+    name: 'set_tracking_persistence',
+    description:
+      'Turn tracking persistence on/off. When on (the default), a tracked aircraft/ship/satellite is remembered across a layer being turned off and back on, and re-acquired automatically if it is still present; when off, tracking clears immediately whenever its layer is disabled, the old behavior.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        enabled: { type: 'boolean' },
+      },
+      required: ['enabled'],
+    },
+  },
+  {
+    type: 'function',
     name: 'frame_overhead',
     description:
       'Cinematically frame entities near the current view: pulls the camera back and angles it so nearby aircraft, ships, or satellites are visible together.',
@@ -646,6 +666,22 @@ const GEV_REALTIME_TOOLS = [
         },
       },
       required: ['target'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'nearby_vehicles',
+    description:
+      'Report how many anonymous vehicles are currently near the view, from the Street Traffic layer. Privacy-preserving: no vehicle identity, plate, or persistent id is ever tracked — only an ephemeral count, average speed, and a few nearest entries by rotating token.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        radiusKm: {
+          type: 'number',
+          description: 'Search radius around the view target, in km. Default 1, max 5.',
+        },
+      },
     },
   },
   {
@@ -938,6 +974,107 @@ const GEV_REALTIME_TOOLS = [
             'true = re-query the PREVIOUS result set instead of fresh data.',
         },
       },
+    },
+  },
+  {
+    type: 'function',
+    name: 'semantic_query',
+    description:
+      'Answer FUZZY, descriptive, or open-ended questions about currently loaded layer data that analyst_query\'s exact filters cannot express — e.g. "ships behaving oddly near the coast", "aircraft that seem off course", "anything unusual near the port". Runs a local semantic search (embeddings + a short generated narrative) over the same live records analyst_query uses, within the same scope. For precise counts, thresholds, or exact-field filters (altitude, speed, callsign, etc.) use analyst_query instead — it is faster and exact. Requires a local Ollama server; if unavailable, this fails plainly and analyst_query remains usable.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        query: {
+          type: 'string',
+          maxLength: 300,
+          description:
+            "The operator's free-text descriptive question, verbatim or lightly cleaned up.",
+        },
+        layers: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: [
+              'flights',
+              'military',
+              'ais-live-vessels',
+              'local-firms',
+              'earthquakes',
+            ],
+          },
+          description:
+            'Layers to search. fires/wildfires → local-firms; ships/vessels → ais-live-vessels. Omit to search flights.',
+        },
+        scope: {
+          type: 'object',
+          additionalProperties: false,
+          description:
+            "Spatial scope, same shape as analyst_query's. Default: view (near the camera).",
+          properties: {
+            kind: {
+              type: 'string',
+              enum: ['view', 'region', 'radius', 'anywhere'],
+            },
+            name: {
+              type: 'string',
+              description:
+                'For kind=region: a state/country ("Texas", "France") or a named natural region.',
+            },
+            km: { type: 'number', description: 'For kind=radius.' },
+            center: {
+              type: 'object',
+              additionalProperties: false,
+              properties: { lat: { type: 'number' }, lon: { type: 'number' } },
+            },
+          },
+        },
+        limit: {
+          type: 'number',
+          minimum: 1,
+          maximum: 20,
+          description: 'Max ranked matches to return. Default 8.',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'search_news',
+    description:
+      'Look up real-world news for a place, event, or topic — "what happened in Nepal", "the recent landslide", "news near the Texas flooding". Independent of camera position: give a real query string. Uses free Google News RSS / GDELT search with widening lookback windows (recent first, then further back) so quieter or slightly older stories still surface, not just breaking news from the last few hours. If nothing turns up in the live index at all, the response may include a modelKnowledge field — a local model\'s own best-effort answer, clearly unverified and NOT sourced from live search; say so explicitly if you use it ("I don\'t have a live source for this, but..."). Prefer citing article titles/domains from the articles list when present. Combine with fly_to_location and annotate_map to show the place while you talk about it.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        query: {
+          type: 'string',
+          maxLength: 120,
+          description:
+            'A real search query — place plus topic works best, e.g. "Nepal landslide", "Texas flooding", "Ohio train derailment". Do not pass a full question.',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'prepare_code_change',
+    description:
+      'Call this ONLY when the user asks you to implement, write, build, or change the APP\'S OWN CODE — typically right after discussing what to build. You cannot edit files yourself, and never claim otherwise or pretend to have made a change. This distills the discussed change into the exact local command for the reviewed, human-in-the-loop `ai-edit` tool and copies it to the clipboard. If the result has copied:true, tell the user plainly you can\'t write code directly, but you\'ve copied the command to their clipboard — paste it into a terminal in the project folder and a local model will draft the change for their review; nothing is written until they approve each file, one by one. If copied:false, say the command aloud slowly instead so they can type it themselves.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        instruction: {
+          type: 'string',
+          maxLength: 300,
+          description:
+            'A clear, specific distillation of the code change just discussed, phrased as an instruction to a coding assistant — e.g. "add a keyboard shortcut hint to the CCTV panel". Not a question, not a recap of the conversation.',
+        },
+      },
+      required: ['instruction'],
     },
   },
   {

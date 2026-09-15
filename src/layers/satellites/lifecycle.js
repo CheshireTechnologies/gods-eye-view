@@ -94,7 +94,14 @@ export function createLifecycle({
 
     disable(viewer) {
       parts.catalog._abortActiveUpdates();
-      parts.tracking._cancelPendingTrackingRestore();
+      // A layer refresh (manual toggle, or auto-disable/recover) is not one
+      // of the three deliberate clear conditions (stop, switch, confirmed
+      // disappearance) — so when persistence is on, ARM a restore for
+      // whatever is currently tracked instead of forgetting it. The visual/
+      // camera teardown below (_clearTracking) is unchanged; only the memory
+      // of what was tracked survives.
+      if (layerState._trackedNorad) parts.tracking._armRefreshTrackingRestore();
+      else parts.tracking._cancelPendingTrackingRestore();
       layerState._enabled = false;
       releaseContinuousRender('satellites');
       if (layerState._pointCollection) layerState._pointCollection.show = false;

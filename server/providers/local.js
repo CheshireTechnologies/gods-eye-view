@@ -7,6 +7,7 @@ import { adsbdbProxy } from './aircraft/enrichment.js';
 import { overpassProxy } from './overpass.js';
 import { militaryInstallationsProxy } from './military-installations.js';
 import { regionalBriefProxy } from './regional/briefing.js';
+import { newsSearchProxy } from './regional/news-search.js';
 import { weatherEffectsProxy } from './regional/weather-effects.js';
 import { cctvProxy } from './cctv.js';
 import { defaultSourceRoot } from './common/source-root.js';
@@ -16,6 +17,7 @@ import { adsbLolProxy } from './aircraft/adsb-lol.js';
 import { aisLiveProxy } from './vessels/ais-live.js';
 import { trackBackfillProxies } from './aircraft/tracks.js';
 import { openAiRealtimeProxy } from './openai.js';
+import { ollamaIntelligenceProxy } from './ollama/index.js';
 import { googlePlacesContextProxy } from './places.js';
 import { keySetupEndpoint } from '../standalone/key-setup.js';
 
@@ -32,6 +34,7 @@ function localProviderPlugins() {
     overpassProxy(),
     militaryInstallationsProxy(),
     regionalBriefProxy(),
+    newsSearchProxy(),
     weatherEffectsProxy(),
     cctvProxy({ sourceRoot: defaultSourceRoot }),
     radioBrowserProxy(),
@@ -40,6 +43,7 @@ function localProviderPlugins() {
     aisLiveProxy(),
     trackBackfillProxies(),
     openAiRealtimeProxy(),
+    ollamaIntelligenceProxy(),
     googlePlacesContextProxy(),
     keySetupEndpoint(),
   ];
@@ -71,9 +75,13 @@ export { isOverpassBoundaryQuery } from './overpass/query.js';
 export { simplifyOverpassPayloadBody } from './overpass/geometry.js';
 export { readOverpassDisk } from './overpass/cache.js';
 export { resolveOverpassPreflight } from './overpass/cache.js';
+export { extractQueryBounds } from './overpass/cache.js';
+export { findNearbyOverpassDisk } from './overpass/cache.js';
+export { overpassDiskDir } from './overpass/constants.js';
 export { overpassPayloadIsData } from './overpass/transport.js';
 export { fetchOverpassPayload } from './overpass/transport.js';
 export { openAiRealtimeProxy } from './openai.js';
+export { ollamaIntelligenceProxy } from './ollama/index.js';
 export { MILITARY_INSTALLATION_ELEMENT_CAP } from './military-installations/constants.js';
 export { quantizeMilitaryInstallationBox } from './military-installations/query.js';
 export { militaryInstallationCacheKey } from './military-installations/query.js';
@@ -87,3 +95,5 @@ export { validMilitaryInstallationBox } from './military-installations/query.js'
 export { militaryInstallationFailureReason } from './military-installations/query.js';
 export { validRegionalPoint } from './regional/query.js';
 export { regionalBriefHasAnySource } from './regional/briefing.js';
+export { newsSearchProxy } from './regional/news-search.js';
+export { fetchNewsForQuery } from './regional/news.js';

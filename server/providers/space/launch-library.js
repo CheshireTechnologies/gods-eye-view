@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
+import { gevCacheDir } from '../common/cache-root.js';
 import {
   readResponseTextCapped,
   coalesceProxyRequest,
@@ -22,11 +23,7 @@ export function rocketLaunchesProxy() {
   const ttlMs = LL2_CACHE_TTL_MS;
   const maxResponseBytes = 12 * 1024 * 1024;
   const maxDiskCacheBytes = 24 * 1024 * 1024;
-  const cachePath = path.join(
-    process.cwd(),
-    '.gev-cache',
-    'launch-library-2-v2.3.json',
-  );
+  const cachePath = gevCacheDir('launch-library-2-v2.3.json');
   let cache = null;
   let diskLoaded = false;
   const inFlight = new Map();

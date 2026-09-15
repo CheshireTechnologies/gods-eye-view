@@ -131,6 +131,7 @@ export function createLifecycle({
     state.activeFocusCount = 0;
     state.activeLabelCount = 0;
     state.selectedRecord = null;
+    state._pendingSelectionRestore = null;
     state.trail = null;
     state.trailPositions = [];
     state.trailMmsi = null;
@@ -164,7 +165,14 @@ export function createLifecycle({
     enable(viewer) {
       const wasEnabled = state.enabled;
       state.enabled = true;
-      if (!wasEnabled) beginAisSession();
+      if (!wasEnabled) {
+        beginAisSession();
+        // vesselMap is untouched by disable() (only destroy() resets it), so
+        // whatever was selected right before disabling is either still sitting
+        // in it (re-select now; store.js's existing missedRefreshes grace then
+        // protects it exactly like any other selection) or genuinely gone.
+        components.selection._attemptRefreshSelectionRestore();
+      }
       holdContinuousRender('ais-vessels'); // per-frame animator (perf wave 2)
       const activeViewer = viewer || state.viewer;
       components.rendering.ensureCollections(activeViewer);
@@ -203,6 +211,11 @@ export function createLifecycle({
       unregisterPickOwner('ais-live-vessels');
       components.rendering.setVisible(false);
       vesselState._vesselOverlayHost.clearSource(VESSEL_OVERLAY_SOURCE_ID);
+      // A layer refresh (manual toggle, or auto-disable/recover from a feed
+      // outage) is not one of the three deliberate clear conditions (stop,
+      // switch, confirmed disappearance) — so when persistence is on, ARM a
+      // restore for whatever is currently selected instead of forgetting it.
+      components.selection._armRefreshSelectionRestore();
       components.selection.clearVesselInspection();
       components.tracking.destroySelectedVesselTrail();
       components.selection.removeVesselInteraction();

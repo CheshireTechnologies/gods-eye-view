@@ -30,11 +30,11 @@ function realtimeTools() {
   return new Function(`return ${literal};`)();
 }
 
-test('Realtime schema exposes the authoritative 28-tool inventory', () => {
+test('Realtime schema exposes the authoritative 31-tool inventory', () => {
   const tools = realtimeTools();
-  assert.equal(tools.length, 28);
+  assert.equal(tools.length, 31);
   const names = tools.map((tool) => tool.name);
-  assert.equal(new Set(names).size, 28, 'tool names are unique');
+  assert.equal(new Set(names).size, 31, 'tool names are unique');
   assert.ok(names.includes('set_context_mode'));
   assert.ok(names.includes('control_cockpit'));
   assert.ok(names.includes('select_nearest_aircraft'));
@@ -154,10 +154,11 @@ test('the edited existing tools changed exactly as intended', () => {
   );
   assert.deepEqual(panel.parameters.required, ['panelId', 'open']);
 
-  // Edit 2: description only — the view state now reports Context and Cockpit.
+  // Edit 2: the view state reports Context and Cockpit, and (2026-09) the
+  // layer inventory moved behind an opt-in includeLayers flag.
   const viewState = byName.get('get_current_view_state');
   assert.match(viewState.description, /Context, Cockpit/);
-  assert.deepEqual(viewState.parameters.properties, {});
+  assert.equal(viewState.parameters.properties.includeLayers.type, 'boolean');
 
   // Edit 3: dependent multi-tool navigation can wait for the destination view.
   const location = byName.get('fly_to_location');
@@ -187,13 +188,16 @@ test('no unchanged Realtime tool definition drifts silently', () => {
   const unchanged = realtimeTools()
     .filter((tool) => !TOUCHED.has(tool.name))
     .sort((a, b) => a.name.localeCompare(b.name));
-  assert.equal(unchanged.length, 21);
+  // semantic_query, search_news, and prepare_code_change are brand-new
+  // additions (not edits to a shipped tool), so they join this "everything
+  // else" bucket and the pin below moves each time.
+  assert.equal(unchanged.length, 24);
   const digest = createHash('sha256')
     .update(JSON.stringify(unchanged))
     .digest('hex')
     .slice(0, 16);
   // ALPR intentionally extends the two layer enums; retain the complete pin.
-  assert.equal(digest, '6963175a0c9a76de', 'an unchanged Realtime tool definition drifted');
+  assert.equal(digest, 'ebbc103d7d15b575', 'an unchanged Realtime tool definition drifted');
 });
 
 test('Radio volume and mission speed share the Sharpen slider visual language', () => {

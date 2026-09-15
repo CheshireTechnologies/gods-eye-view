@@ -1,4 +1,4 @@
-import path from 'node:path';
+import { gevCacheDir } from '../common/cache-root.js';
 
 // ---------------------------------------------------------------------------
 // Military-installation context proxy
@@ -32,12 +32,16 @@ const MILITARY_INSTALLATION_ELEMENT_CAP = 700;
  */
 const MILITARY_INSTALLATION_DISK_TTL_MS = 30 * 86_400_000;
 
-/** Disk-cache directory for mapped installation payloads. */
-const MILITARY_INSTALLATION_DISK_DIR = path.join(
-  process.cwd(),
-  '.gev-cache',
-  'military-installations',
-);
+/**
+ * Disk-cache directory for mapped installation payloads. A FUNCTION, not a
+ * constant — see overpass/constants.js's overpassDiskDir for why: this module
+ * is statically imported (via local.js) before server/standalone/vite.config.js
+ * runs loadEnv(), so resolving GEV_CACHE_DIR eagerly here would freeze it to
+ * the un-redirected default. Every call site must call this, not cache it.
+ */
+function militaryInstallationDiskDir() {
+  return gevCacheDir('military-installations');
+}
 
 /**
  * Cache-key grid step in degrees (~5.5 km).
@@ -55,7 +59,7 @@ export {
   MILITARY_INSTALLATION_DISK_TTL_MS,
   MILITARY_INSTALLATION_STALE_MS,
   MILITARY_INSTALLATION_CACHE_MS,
-  MILITARY_INSTALLATION_DISK_DIR,
+  militaryInstallationDiskDir,
   MILITARY_INSTALLATION_MAX_CACHE,
   MILITARY_INSTALLATION_BBOX_STEP_DEG,
 };

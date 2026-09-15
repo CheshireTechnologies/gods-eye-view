@@ -21,7 +21,14 @@ import {
   RENDER_DELAY_SEC,
   TRAIL_COLOR,
   CYAN_TRANSPARENT,
+  REFRESH_TRACKING_EXPIRY_MS,
 } from './policy.js';
+import { isTrackingPersistenceEnabled } from '../../data/trackingPersistence.js';
+import {
+  shouldArmRefreshRestore,
+  buildRefreshRestoreRecord,
+  isRefreshRestoreExpired,
+} from '../../data/refreshTrackingRestore.js';
 
 export function createTracking({
   flightState,
@@ -717,6 +724,21 @@ export function createTracking({
       pending.generation !== flightState._trackingIntentGeneration
     )
       return false;
+    // Refresh-persistence latches (armed by _armRefreshTrackingRestore, not the
+    // share/session-restore callers) are bounded: past the layer's expiry
+    // window this is CONFIRMED DISAPPEARANCE, not "still mid-refresh" — stop
+    // waiting and tell the UI, rather than latching silently forever.
+    if (isRefreshRestoreExpired(pending, Date.now(), REFRESH_TRACKING_EXPIRY_MS)) {
+      flightState._pendingTrackingRestore = null;
+      _emitAwarenessEvent('gev:awareness-subject-cleared', {
+        layerId: 'flights',
+        id: pending.id,
+        label: pending.label,
+        origin: pending.origin,
+        reason: 'refresh-expired',
+      });
+      return false;
+    }
     if (
       !flightState._billboardCollection?.show ||
       !flightState._billboards.has(pending.id)
@@ -730,6 +752,35 @@ export function createTracking({
   function _cancelPendingTrackingRestore() {
     flightState._trackingIntentGeneration += 1;
     flightState._pendingTrackingRestore = null;
+  }
+
+  /**
+   * Arm tracking persistence for a layer refresh (disable→re-enable), called
+   * from lifecycle.js's disable() in place of an unconditional cancel. Unlike
+   * the share/session-restore latch (armed with a target the caller already
+   * chose), this captures whatever is CURRENTLY tracked, so re-enabling later
+   * re-acquires the same contact if it is still present — clearing only on
+   * explicit stop_tracking, a different explicit track, or confirmed
+   * disappearance (see _applyPendingTrackingRestore's expiry branch above).
+   */
+
+  function _armRefreshTrackingRestore() {
+    const id = flightState._trackedIcao;
+    if (
+      !shouldArmRefreshRestore({
+        persistenceEnabled: isTrackingPersistenceEnabled(),
+        trackedId: id,
+      })
+    ) {
+      _cancelPendingTrackingRestore();
+      return;
+    }
+    flightState._pendingTrackingRestore = buildRefreshRestoreRecord({
+      id,
+      label: parts.queries._contactLabel(id, flightState._flightData.get(id)),
+      generation: ++flightState._trackingIntentGeneration,
+      nowMs: Date.now(),
+    });
   }
 
   /** Multi-line tracked presentation text: "CS · FL · kts" + "Airline · Type" +
@@ -1248,6 +1299,7 @@ export function createTracking({
     _militaryLayerSuppresses,
     _applyPendingTrackingRestore,
     _cancelPendingTrackingRestore,
+    _armRefreshTrackingRestore,
     _trackedLabelText,
     _updateTrackedLabelModel,
     _syncTrackedBillboardImage,

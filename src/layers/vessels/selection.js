@@ -1,5 +1,7 @@
 import * as Cesium from 'cesium';
 import { VESSEL_OVERLAY_SOURCE_ID } from '../../data/vesselLabels.js';
+import { isTrackingPersistenceEnabled } from '../../data/trackingPersistence.js';
+import { shouldArmRefreshRestore } from '../../data/refreshTrackingRestore.js';
 
 export function createSelection({
   vesselState,
@@ -147,7 +149,7 @@ export function createSelection({
     }
   }
 
-  function selectVessel(record) {
+  function selectVessel(record, { origin = 'programmatic' } = {}) {
     if (!record?.mmsi) return;
     const reuseTrail = state.trailMmsi === record.mmsi;
     clearSelection({ preserveTrail: reuseTrail });
@@ -161,7 +163,7 @@ export function createSelection({
     // click, not up to VISIBILITY_UPDATE_MS later.
     components.rendering.updateVisibility(true);
     components.cards.updateSelectedVesselHud(record);
-    if (registerSelectedContext(record)) {
+    if (registerSelectedContext(record, { origin })) {
       selectEntityContext(record);
     }
     // Track-history trail (PRD F3/F4): seed with the current position + async
@@ -180,7 +182,7 @@ export function createSelection({
    * @returns {Object|null} The context record, or null if registration failed.
    */
 
-  function registerSelectedContext(record) {
+  function registerSelectedContext(record, { origin = 'programmatic' } = {}) {
     if (!record?.mmsi) return null;
     try {
       return registerEntityContext(record, {
@@ -189,6 +191,7 @@ export function createSelection({
         layerName: 'Live AIS Vessels',
         source: aisLiveVesselsLayer.source,
         label: components.cards.displayVesselName(record),
+        origin,
         latitude: record.lat,
         longitude: record.lon,
         properties: {
@@ -233,6 +236,68 @@ export function createSelection({
     clearSelection({ evicted });
     components.cards.resetSelectedVesselHud();
   }
+
+  /**
+   * Arm tracking persistence for a layer refresh (disable→re-enable), called
+   * from lifecycle.js's disable() BEFORE clearVesselInspection() discards the
+   * selection. Unlike flights/military/satellites, vessels have no
+   * viewer.trackedEntity camera-follow to tear down and no async restore race
+   * to guard with a generation counter — state.vesselMap is simply frozen
+   * while the layer is disabled (disable() never resets it, only destroy()
+   * does), so the captured mmsi is checked once, synchronously, against that
+   * frozen map at the next enable() (see _attemptRefreshSelectionRestore).
+   */
+
+  function _armRefreshSelectionRestore() {
+    const record = state.selectedRecord;
+    if (
+      !shouldArmRefreshRestore({
+        persistenceEnabled: isTrackingPersistenceEnabled(),
+        trackedId: record?.mmsi,
+      })
+    ) {
+      state._pendingSelectionRestore = null;
+      return;
+    }
+    // Shape matches state.js's own JSDoc for this field — no generation/origin
+    // counter needed here (see the function doc above for why).
+    state._pendingSelectionRestore = {
+      mmsi: record.mmsi,
+      label: components.cards.displayVesselName(record) || record.name || record.mmsi,
+      armedAtMs: Date.now(),
+      reason: 'refresh',
+    };
+  }
+
+  /**
+   * Called once from lifecycle.js's enable() on the OFF→ON transition. The
+   * previously-selected mmsi is either still sitting in vesselMap (disable()
+   * never clears it) — in which case it is re-selected immediately, and the
+   * PRE-EXISTING missedRefreshes/SELECTED_PIN_REFRESHES grace in store.js's
+   * reconcileVessels takes over from here exactly as it would for a vessel
+   * that was never deselected — or it is genuinely gone, which is confirmed
+   * disappearance (the map cannot change further while disabled, so there is
+   * nothing left to wait on).
+   * @returns {boolean} True when a restore was applied.
+   */
+
+  function _attemptRefreshSelectionRestore() {
+    const pending = state._pendingSelectionRestore;
+    if (!pending) return false;
+    state._pendingSelectionRestore = null;
+    const record = state.vesselMap.get(pending.mmsi);
+    if (record) {
+      selectVessel(record, { origin: 'refresh-restore' });
+      return true;
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gev:entity-selection-cleared', {
+        detail: { layerId: 'ais-live-vessels', reason: 'refresh-expired' },
+      }));
+    }
+    return false;
+  }
+
   return {
     installInteraction,
     bindVesselInteraction,
@@ -243,5 +308,7 @@ export function createSelection({
     registerSelectedContext,
     clearSelection,
     clearVesselInspection,
+    _armRefreshSelectionRestore,
+    _attemptRefreshSelectionRestore,
   };
 }

@@ -390,13 +390,13 @@ export function createQueries({
      * @param {string|number} mmsi Vessel MMSI.
      * @returns {boolean} True if a matching vessel was selected.
      */
-    selectById(mmsi) {
+    selectById(mmsi, { origin = 'programmatic' } = {}) {
       if (mmsi === null || mmsi === undefined) return false;
       const target = String(mmsi).trim();
       if (!target) return false;
       const record = state.vesselMap.get(target);
       if (!record) return false;
-      components.selection.selectVessel(record);
+      components.selection.selectVessel(record, { origin });
       return true;
     },
 

@@ -21,6 +21,10 @@ function fixture(name, overrides = {}, preview = false) {
   const logs = [];
   const deps = {
     path, process: { cwd: () => '/fixture', env: {} },
+    // Mirrors server/providers/common/cache-root.js's default (unconfigured)
+    // behavior without pulling in the real module's fs.existsSync check —
+    // these tests exercise error-response sanitization, not cache location.
+    gevCacheDir: (...segments) => path.join('/fixture', '.gev-cache', ...segments),
     fsp: {
       readFile: async () => { throw new Error('cache absent'); },
       stat: async () => { throw new Error('cache absent'); },

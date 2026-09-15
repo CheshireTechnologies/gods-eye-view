@@ -6,7 +6,14 @@ import {
   HIGH_ORBIT_ALTITUDE_M,
   TRACK_VIEW_FROM_HIGH_SCALE,
   TRACK_VIEW_FROM_LEO,
+  REFRESH_TRACKING_EXPIRY_MS,
 } from './policy.js';
+import { isTrackingPersistenceEnabled } from '../../data/trackingPersistence.js';
+import {
+  shouldArmRefreshRestore,
+  buildRefreshRestoreRecord,
+  isRefreshRestoreExpired,
+} from '../../data/refreshTrackingRestore.js';
 
 export function createTracking({ state: layerState, services, parts, source }) {
   const { clearFocusTarget, publishFocusTargetFromCachedPosition } =
@@ -44,6 +51,21 @@ export function createTracking({ state: layerState, services, parts, source }) {
       !layerState._enabled
     )
       return false;
+    // Refresh-persistence latches (armed by _armRefreshTrackingRestore, not
+    // the share/session-restore callers) are bounded: past the layer's
+    // expiry window this is CONFIRMED DISAPPEARANCE, not "still mid-refresh"
+    // — stop waiting and tell the UI, rather than latching silently forever.
+    if (isRefreshRestoreExpired(pending, Date.now(), REFRESH_TRACKING_EXPIRY_MS)) {
+      layerState._pendingTrackingRestore = null;
+      _emitAwarenessEvent('gev:awareness-subject-cleared', {
+        layerId: 'satellites',
+        id: pending.id,
+        label: pending.label,
+        origin: pending.origin,
+        reason: 'refresh-expired',
+      });
+      return false;
+    }
     if (
       !layerState._viewer ||
       !layerState._catalog.has(pending.id) ||
@@ -58,6 +80,33 @@ export function createTracking({ state: layerState, services, parts, source }) {
   function _cancelPendingTrackingRestore() {
     layerState._trackingIntentGeneration += 1;
     layerState._pendingTrackingRestore = null;
+  }
+
+  /**
+   * Arm tracking persistence for a layer refresh (disable→re-enable), called
+   * from lifecycle.js's disable() in place of an unconditional cancel. See
+   * flights/tracking.js's _armRefreshTrackingRestore for the full rationale
+   * — mirrored here against satellites' own tracked-id/label fields.
+   */
+
+  function _armRefreshTrackingRestore() {
+    const noradId = layerState._trackedNorad;
+    if (
+      !shouldArmRefreshRestore({
+        persistenceEnabled: isTrackingPersistenceEnabled(),
+        trackedId: noradId,
+      })
+    ) {
+      _cancelPendingTrackingRestore();
+      return;
+    }
+    const sat = layerState._catalog.get(noradId);
+    layerState._pendingTrackingRestore = buildRefreshRestoreRecord({
+      id: noradId,
+      label: sat?.name?.trim() || `SAT-${noradId}`,
+      generation: ++layerState._trackingIntentGeneration,
+      nowMs: Date.now(),
+    });
   }
 
   /**
@@ -467,6 +516,7 @@ export function createTracking({ state: layerState, services, parts, source }) {
     _emitAwarenessEvent,
     _applyPendingTrackingRestore,
     _cancelPendingTrackingRestore,
+    _armRefreshTrackingRestore,
     _clearTracking,
     _getTrackedFramePosition,
     _trackedDisplayCached,
