@@ -19,9 +19,13 @@ test('the complete Realtime tool payload retains its pre-extraction contract and
   const digest = createHash('sha256')
     .update(JSON.stringify(stable(GEV_REALTIME_TOOLS)))
     .digest('hex');
+  // Pinned hash updated for the merge that added set_tracking_persistence,
+  // nearby_vehicles, semantic_query, search_news, prepare_code_change, and
+  // get_current_view_state's includeLayers opt-in — a real payload change,
+  // not refactor drift.
   assert.equal(
     digest,
-    '956381c3456d3644ed7c9cda72910dc68a34d9191e0b3e414ee200c348245214',
+    'e13b5afa34086f3256c725fd086431452bf453106c54c945ae4819b040314155',
   );
 });
 
