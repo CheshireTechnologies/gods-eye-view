@@ -141,6 +141,31 @@ export function createAnonymousVehicleTracking({
     return records;
   }
 
+  /**
+   * Session tokens for an arbitrary batch of dots — backs on-screen vehicle
+   * labels with the same rotating, opaque token as the proximity roster.
+   * Shares `_sessions` with {@link getAnonymousVehiclesInRange}, so a dot
+   * keeps one identity across both call sites within the TTL. Unlike that
+   * function, this does no distance filtering — the caller has already
+   * chosen which dots to label.
+   * @param {Array<object>} dots
+   * @param {{now?: number}} [options] - `now` overrides the clock for tests.
+   * @returns {Map<object, string>} dot → token; empty (not omitted-per-dot)
+   *   when tracking is disabled, so callers can fall back cleanly.
+   */
+  function getVehicleLabelTokens(dots, { now } = {}) {
+    const nowMs = Number.isFinite(now) ? now : Date.now();
+    const liveDots = new Set(layerState._dots);
+    const tokens = new Map();
+    if (trackingEnabled) {
+      for (const dot of dots) {
+        tokens.set(dot, _sessionToken(dot, nowMs));
+      }
+    }
+    _pruneStaleSessions(liveDots, nowMs);
+    return tokens;
+  }
+
   /** Wipe every anonymous session immediately (layer disable/teardown). */
   function clearAnonymousVehicleSessions() {
     _sessions.clear();
@@ -148,6 +173,10 @@ export function createAnonymousVehicleTracking({
   }
 
   return {
-    methods: { getAnonymousVehiclesInRange, clearAnonymousVehicleSessions },
+    methods: {
+      getAnonymousVehiclesInRange,
+      getVehicleLabelTokens,
+      clearAnonymousVehicleSessions,
+    },
   };
 }

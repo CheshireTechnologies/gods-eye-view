@@ -167,3 +167,59 @@ test('an invalid/missing center returns an empty roster without throwing', () =>
   const { methods } = createAnonymousVehicleTracking({ state: makeLayerState([dot]) });
   assert.deepEqual(methods.getAnonymousVehiclesInRange(null, 1000), []);
 });
+
+test('getVehicleLabelTokens mints a token per dot, independent of proximity', () => {
+  const near = makeDot({ lon: -97.743, lat: 30.2673 });
+  const far = makeDot({ lon: -97.9, lat: 30.5 }); // outside any query radius
+  const { methods } = createAnonymousVehicleTracking({ state: makeLayerState([near, far]) });
+
+  const tokens = methods.getVehicleLabelTokens([near, far]);
+  assert.equal(tokens.size, 2);
+  assert.equal(typeof tokens.get(near), 'string');
+  assert.equal(typeof tokens.get(far), 'string');
+  assert.notEqual(tokens.get(near), tokens.get(far));
+});
+
+test('getVehicleLabelTokens shares one identity with the proximity roster within the TTL', () => {
+  const dot = makeDot({ lon: -97.743, lat: 30.2673 });
+  const { methods } = createAnonymousVehicleTracking({ state: makeLayerState([dot]) });
+
+  const now = 5_000_000;
+  const fromRange = methods.getAnonymousVehiclesInRange(ORIGIN, 1000, { now })[0];
+  const fromLabels = methods.getVehicleLabelTokens([dot], { now: now + 1000 });
+  assert.equal(fromLabels.get(dot), fromRange.token);
+});
+
+test('getVehicleLabelTokens rotates the token once its TTL lapses', () => {
+  const dot = makeDot({ lon: -97.743, lat: 30.2673 });
+  const { methods } = createAnonymousVehicleTracking({ state: makeLayerState([dot]) });
+
+  const now = 6_000_000;
+  const first = methods.getVehicleLabelTokens([dot], { now }).get(dot);
+  const later = now + ANON_VEHICLE_SESSION_TTL_MS + 1;
+  const second = methods.getVehicleLabelTokens([dot], { now: later }).get(dot);
+  assert.notEqual(first, second);
+});
+
+test('getVehicleLabelTokens returns an empty map when tracking is disabled', () => {
+  const dot = makeDot({ lon: -97.743, lat: 30.2673 });
+  const { methods } = createAnonymousVehicleTracking({
+    state: makeLayerState([dot]),
+    trackingEnabled: false,
+  });
+  assert.equal(methods.getVehicleLabelTokens([dot]).size, 0);
+});
+
+test('getVehicleLabelTokens still sweeps sessions for dots recycled off _dots', () => {
+  const dot = makeDot({ lon: -97.743, lat: 30.2673 });
+  const layerState = makeLayerState([dot]);
+  const { methods } = createAnonymousVehicleTracking({ state: layerState });
+
+  const now = 7_000_000;
+  const before = methods.getVehicleLabelTokens([dot], { now }).get(dot);
+  layerState._dots = []; // road-data reload recycled the dot
+  methods.getVehicleLabelTokens([], { now: now + 1 }); // sweeps stale sessions
+  layerState._dots = [dot]; // same identity reappears — proves no stale reuse
+  const after = methods.getVehicleLabelTokens([dot], { now: now + 2 }).get(dot);
+  assert.notEqual(before, after);
+});

@@ -150,7 +150,7 @@ export function createLifecycle({
       parts.animation.clearDots();
       // Anonymous vehicle sessions are scoped to this layer being live — a
       // disabled traffic layer retains zero tokens, matching clearDots().
-      parts.anonymousVehicleTracking.clearAnonymousVehicleSessions();
+      parts.anonymousVehicleTracking.methods.clearAnonymousVehicleSessions();
       layerState._lastViewCenter = null;
       // A stale outage from the last session would misreport a fresh enable —
       // the next load re-derives feed health from real evidence.

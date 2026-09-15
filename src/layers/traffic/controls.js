@@ -4,6 +4,36 @@ import {
 } from '../../data/trafficPresetStyle.js';
 import { TRAFFIC_TIMING_ENABLED } from './policy.js';
 
+/**
+ * Derive a 4-char display code from an opaque session token — same label
+ * width as the legacy sequential index, still non-sequential per rotation
+ * since it's sliced straight from the random token.
+ */
+function shortVehicleCode(token) {
+  const cleaned = String(token).replace(/-/g, '').toUpperCase();
+  return (cleaned.slice(0, 4) || '0000').padEnd(4, '0');
+}
+
+// Stable per-dot handle for the detection arbiter's row-continuity tracking
+// (`obj.sourceId` in detection.js) — deliberately SEPARATE from the rotating
+// anonymous display token in `id`. The arbiter fades a row out/in whenever
+// its tracking key changes, so if the privacy token itself were the key, a
+// vehicle would visibly flicker every time its token rotated. This handle
+// never appears on screen, is never derived from any real vehicle attribute,
+// and — being a WeakMap — is dropped automatically once a dot leaves `_dots`
+// and becomes unreachable, so it carries no more persistence than the dot
+// simulation already does.
+let _nextRenderId = 1;
+const _dotRenderIds = new WeakMap();
+function renderIdFor(dot) {
+  let id = _dotRenderIds.get(dot);
+  if (id === undefined) {
+    id = _nextRenderId++;
+    _dotRenderIds.set(dot, id);
+  }
+  return id;
+}
+
 export function createControls({ state: layerState, services, parts, source }) {
   const { getFlowSessionStats } = source;
 
@@ -83,12 +113,20 @@ export function createControls({ state: layerState, services, parts, source }) {
      * (e.g. CCTV bounding-box rendering).
      *
      * Uses a deterministic stride-based sampling so different seeds yield
-     * non-overlapping subsets without sorting or shuffling.
+     * non-overlapping subsets without sorting or shuffling. Each label's
+     * VEH-XXXX suffix is sliced from that dot's rotating anonymous session
+     * token (see anonymousVehicleTracking.js) rather than its array index —
+     * it ages out and reshuffles on the token's TTL instead of staying
+     * pinned to one dot indefinitely, and falls back to the plain index if
+     * anonymous tracking is disabled. `sourceId` is a SEPARATE, non-rotating
+     * per-dot handle — detection.js's arbiter keys row continuity off it, so
+     * a token rotation updates the visible text without the detection box
+     * fading out and back in as if the vehicle had disappeared.
      *
      * @param {Object}  [options]
      * @param {number}  [options.maxCount] - Maximum objects to return (defaults to all).
      * @param {number}  [options.seed]     - Integer seed to offset the sampling start.
-     * @returns {Array<{position:Cesium.Cartesian3, id:string, type:string}>}
+     * @returns {Array<{position:Cesium.Cartesian3, id:string, sourceId:number, type:string}>}
      */
     getDetectableObjects(options = {}) {
       if (!layerState._enabled || layerState._dots.length === 0) return [];
@@ -100,13 +138,26 @@ export function createControls({ state: layerState, services, parts, source }) {
       const stride = Math.max(1, Math.ceil(layerState._dots.length / maxCount));
       const start = seed % stride;
 
-      const result = [];
+      const sampled = [];
       for (let i = start; i < layerState._dots.length; i += stride) {
-        const pos = layerState._dots[i].point.position;
-        if (!pos) continue;
+        const dot = layerState._dots[i];
+        if (!dot.point.position) continue;
+        sampled.push({ dot, index: i });
+        if (sampled.length >= maxCount) break;
+      }
+
+      const tokens = parts.anonymousVehicleTracking.methods.getVehicleLabelTokens(
+        sampled.map((s) => s.dot),
+      );
+
+      return sampled.map(({ dot, index }) => {
+        const token = tokens.get(dot);
         const entry = {
-          position: pos,
-          id: `VEH-${String(i).padStart(4, '0')}`,
+          position: dot.point.position,
+          id: token
+            ? `VEH-${shortVehicleCode(token)}`
+            : `VEH-${String(index).padStart(4, '0')}`,
+          sourceId: renderIdFor(dot),
           type: 'VEH',
         };
         // Live mode: the detection bracket carries the congestion signal —
@@ -115,13 +166,11 @@ export function createControls({ state: layerState, services, parts, source }) {
         // lifting"). Keyless mode sets no tier: contacts keep the stock
         // 'vehicle' bracket and the keyless experience stays untouched.
         if (layerState._liveMode) {
-          const tier = trafficBucketTier(layerState._dots[i].bucket || 'sim');
+          const tier = trafficBucketTier(dot.bucket || 'sim');
           if (tier) entry.tier = tier;
         }
-        result.push(entry);
-        if (result.length >= maxCount) break;
-      }
-      return result;
+        return entry;
+      });
     },
 
     /**
