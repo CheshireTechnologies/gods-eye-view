@@ -273,7 +273,10 @@ export function createSelection({
     // counter needed here (see the function doc above for why).
     state._pendingSelectionRestore = {
       mmsi: record.mmsi,
-      label: components.cards.displayVesselName(record) || record.name || record.mmsi,
+      label:
+        components.cards.displayVesselName(record) ||
+        record.name ||
+        record.mmsi,
       armedAtMs: Date.now(),
       reason: 'refresh',
     };
@@ -301,9 +304,11 @@ export function createSelection({
       return true;
     }
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('gev:entity-selection-cleared', {
-        detail: { layerId: 'ais-live-vessels', reason: 'refresh-expired' },
-      }));
+      window.dispatchEvent(
+        new CustomEvent('gev:entity-selection-cleared', {
+          detail: { layerId: 'ais-live-vessels', reason: 'refresh-expired' },
+        }),
+      );
     }
     return false;
   }

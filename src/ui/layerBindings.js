@@ -273,7 +273,10 @@ export class LayerBindings {
         this._handleRefreshTrackingNotice(event, false);
       this._entityClearedHandler = (event) =>
         this._handleRefreshTrackingNotice(event, true);
-      window.addEventListener('gev:entity-selected', this._entitySelectedHandler);
+      window.addEventListener(
+        'gev:entity-selected',
+        this._entitySelectedHandler,
+      );
       window.addEventListener(
         'gev:entity-selection-cleared',
         this._entityClearedHandler,
@@ -299,7 +302,10 @@ export class LayerBindings {
       this._awarenessClearedHandler = null;
     }
     if (this._entitySelectedHandler) {
-      window.removeEventListener('gev:entity-selected', this._entitySelectedHandler);
+      window.removeEventListener(
+        'gev:entity-selected',
+        this._entitySelectedHandler,
+      );
       this._entitySelectedHandler = null;
     }
     if (this._entityClearedHandler) {

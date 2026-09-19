@@ -29,7 +29,9 @@ async function embedOne(text, { baseUrl, model }) {
     throw new Error(`Ollama embeddings request failed (${response.status})`);
   }
   const data = await response.json();
-  const vector = Array.isArray(data?.embeddings?.[0]) ? data.embeddings[0] : null;
+  const vector = Array.isArray(data?.embeddings?.[0])
+    ? data.embeddings[0]
+    : null;
   if (!vector) throw new Error('Ollama returned no embedding vector');
   return vector;
 }

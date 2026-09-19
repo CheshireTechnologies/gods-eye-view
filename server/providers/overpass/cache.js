@@ -162,7 +162,8 @@ function overlapFraction(target, candidate) {
   const overlapE = Math.min(target.east, candidate.east);
   const overlapArea =
     Math.max(0, overlapN - overlapS) * Math.max(0, overlapE - overlapW);
-  const targetArea = (target.north - target.south) * (target.east - target.west);
+  const targetArea =
+    (target.north - target.south) * (target.east - target.west);
   return targetArea > 0 ? overlapArea / targetArea : 0;
 }
 
@@ -215,7 +216,8 @@ async function diskEntryBounds(filePath, mtimeMs) {
   try {
     const raw = await fsp.readFile(filePath, 'utf8');
     const payload = JSON.parse(raw);
-    if (overpassPayloadIsData(payload)) bounds = payloadElementBounds(payload.body);
+    if (overpassPayloadIsData(payload))
+      bounds = payloadElementBounds(payload.body);
   } catch {
     bounds = null;
   }
@@ -239,7 +241,11 @@ async function diskEntryBounds(filePath, mtimeMs) {
  *   cache directory that has grown over months can't turn a failed fetch
  *   into an unbounded disk scan.
  */
-async function findNearbyOverpassDisk(cacheKey, minOverlap = 0.1, scanLimit = 300) {
+async function findNearbyOverpassDisk(
+  cacheKey,
+  minOverlap = 0.1,
+  scanLimit = 300,
+) {
   const target = extractQueryBounds(cacheKey);
   if (!target) return null;
 

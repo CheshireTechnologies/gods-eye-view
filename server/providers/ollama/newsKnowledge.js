@@ -74,7 +74,9 @@ function createNewsKnowledgeHandler({
     try {
       const body = await readRequestBody(req, 4 * 1024);
       const { query } = JSON.parse(body || '{}');
-      const safeQuery = String(query ?? '').trim().slice(0, 300);
+      const safeQuery = String(query ?? '')
+        .trim()
+        .slice(0, 300);
       if (!safeQuery) {
         res.statusCode = 400;
         res.setHeader('Content-Type', 'application/json');

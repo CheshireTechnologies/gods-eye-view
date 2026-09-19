@@ -2422,15 +2422,24 @@ async function frameOverhead(viewer, dataManager, styleManager, args = {}) {
  */
 function nearbyVehicles(viewer, dataManager, args = {}) {
   if (!dataManager.isEnabled('traffic')) {
-    return { ok: false, action: 'nearby_vehicles', error: 'The Traffic layer is not enabled' };
+    return {
+      ok: false,
+      action: 'nearby_vehicles',
+      error: 'The Traffic layer is not enabled',
+    };
   }
   const module = dataManager.layers.get('traffic')?.module;
   if (typeof module?.getAnonymousVehiclesInRange !== 'function') {
-    return { ok: false, action: 'nearby_vehicles', error: 'Vehicle tracking is unavailable' };
+    return {
+      ok: false,
+      action: 'nearby_vehicles',
+      error: 'Vehicle tracking is unavailable',
+    };
   }
   const radiusKm = clampNumber(args.radiusKm, 0.1, 5, 1);
   const center = getViewTargetCartesian(viewer) || viewer.camera.positionWC;
-  const vehicles = module.getAnonymousVehiclesInRange(center, radiusKm * 1000) || [];
+  const vehicles =
+    module.getAnonymousVehiclesInRange(center, radiusKm * 1000) || [];
   const averageSpeedMps = vehicles.length
     ? vehicles.reduce((sum, v) => sum + (v.speedMps || 0), 0) / vehicles.length
     : 0;
@@ -3109,14 +3118,14 @@ function getCurrentViewState(
     // with includeLayers:true for "what layers are on/available" questions.
     ...(args?.includeLayers
       ? {
-        layers: dataManager.getAll().map((layer) => ({
-          id: layer.id,
-          name: layer.name,
-          enabled: layer.enabled,
-          count: layer.stats?.count || 0,
-          error: layer.stats?.error || null,
-        })),
-      }
+          layers: dataManager.getAll().map((layer) => ({
+            id: layer.id,
+            name: layer.name,
+            enabled: layer.enabled,
+            count: layer.stats?.count || 0,
+            error: layer.stats?.error || null,
+          })),
+        }
       : {}),
   };
 }
@@ -4224,7 +4233,15 @@ function trackedEntityId(info) {
 }
 
 /** Begin a new tracking-start record for one layer, replacing that layer's previous record only. */
-function recordTrackingStart({ layerId, kind, id, label, latitude, longitude, altitudeM }) {
+function recordTrackingStart({
+  layerId,
+  kind,
+  id,
+  label,
+  latitude,
+  longitude,
+  altitudeM,
+}) {
   _trackingStarts.set(layerId, {
     layerId,
     kind,
@@ -4249,16 +4266,30 @@ function trackingSinceFor(layerId, info) {
   if (!start) return {};
   const liveId = trackedEntityId(info);
   if (start.id !== null && liveId !== null && start.id !== liveId) return {};
-  const elapsedSeconds = Math.max(0, Math.round((Date.now() - start.startedAt) / 1000));
-  const distanceFromStartKm = (Number.isFinite(start.startLat) && Number.isFinite(start.startLon)
-    && Number.isFinite(info.latitude) && Number.isFinite(info.longitude))
-    ? Math.round(haversineKm(start.startLat, start.startLon, info.latitude, info.longitude) * 10) / 10
-    : null;
+  const elapsedSeconds = Math.max(
+    0,
+    Math.round((Date.now() - start.startedAt) / 1000),
+  );
+  const distanceFromStartKm =
+    Number.isFinite(start.startLat) &&
+    Number.isFinite(start.startLon) &&
+    Number.isFinite(info.latitude) &&
+    Number.isFinite(info.longitude)
+      ? Math.round(
+          haversineKm(
+            start.startLat,
+            start.startLon,
+            info.latitude,
+            info.longitude,
+          ) * 10,
+        ) / 10
+      : null;
   // Average speed is noisy over a few seconds of dead-reckoned motion; only
   // report it once there is enough elapsed time for it to mean something.
-  const averageSpeedKmh = (distanceFromStartKm !== null && elapsedSeconds >= 5)
-    ? Math.round((distanceFromStartKm / (elapsedSeconds / 3600)) * 10) / 10
-    : null;
+  const averageSpeedKmh =
+    distanceFromStartKm !== null && elapsedSeconds >= 5
+      ? Math.round((distanceFromStartKm / (elapsedSeconds / 3600)) * 10) / 10
+      : null;
   return {
     since: {
       startedAt: new Date(start.startedAt).toISOString(),
@@ -4509,7 +4540,9 @@ async function embedViaOllama(texts) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !Array.isArray(data?.vectors)) {
-    throw new Error(data?.error || `Embeddings request failed (${response.status})`);
+    throw new Error(
+      data?.error || `Embeddings request failed (${response.status})`,
+    );
   }
   return data.vectors;
 }
@@ -4526,7 +4559,9 @@ async function narrateViaOllama(query, matches) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || typeof data?.narrative !== 'string') {
-    throw new Error(data?.error || `Narrate request failed (${response.status})`);
+    throw new Error(
+      data?.error || `Narrate request failed (${response.status})`,
+    );
   }
   return data.narrative;
 }
@@ -4538,8 +4573,16 @@ async function narrateViaOllama(query, matches) {
  * and spatial scoping, so the two tools never disagree about what "in view"
  * or "near X" means; only the ranking pass differs, via a local Ollama model.
  */
-async function runSemanticQuery(viewer, dataManager, args = {}, placeSearch = unavailablePlaceSearch) {
-  if (!_analystEngine) _analystEngine = createAnalystEngine(analystProviders(viewer, dataManager, { placeSearch }));
+async function runSemanticQuery(
+  viewer,
+  dataManager,
+  args = {},
+  placeSearch = unavailablePlaceSearch,
+) {
+  if (!_analystEngine)
+    _analystEngine = createAnalystEngine(
+      analystProviders(viewer, dataManager, { placeSearch }),
+    );
   if (!_semanticEngine) {
     _semanticEngine = createSemanticEngine({
       analystEngine: _analystEngine,
@@ -4554,7 +4597,12 @@ async function runSemanticQuery(viewer, dataManager, args = {}, placeSearch = un
     limit: args.limit,
   });
   if (!result.ok) {
-    return { ok: false, action: 'semantic_query', error: result.error, coverage: result.coverage };
+    return {
+      ok: false,
+      action: 'semantic_query',
+      error: result.error,
+      coverage: result.coverage,
+    };
   }
   return {
     ok: true,
@@ -4612,7 +4660,11 @@ async function runSearchNews(args = {}, { signal } = {}) {
 async function prepareCodeChange(args = {}) {
   const instruction = String(args.instruction || '').trim();
   if (!instruction) {
-    return { ok: false, action: 'prepare_code_change', error: 'instruction is required' };
+    return {
+      ok: false,
+      action: 'prepare_code_change',
+      error: 'instruction is required',
+    };
   }
   const command = `npm run ai-edit -- "${instruction.replace(/(["\\$`])/g, '\\$1')}"`;
   let copied = false;
@@ -4624,5 +4676,11 @@ async function prepareCodeChange(args = {}) {
   } catch {
     copied = false; // Clipboard permission/user-activation can lapse by the time this fires.
   }
-  return { ok: true, action: 'prepare_code_change', instruction, command, copied };
+  return {
+    ok: true,
+    action: 'prepare_code_change',
+    instruction,
+    command,
+    copied,
+  };
 }

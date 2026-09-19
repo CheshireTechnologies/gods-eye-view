@@ -59,17 +59,27 @@ export function createSemanticEngine({ analystEngine, embed, narrate }) {
   async function query(spec = {}) {
     const queryText = String(spec.query || '').trim();
     if (!queryText) {
-      return { ok: false, error: 'semantic_query needs a free-text question to search for.' };
+      return {
+        ok: false,
+        error: 'semantic_query needs a free-text question to search for.',
+      };
     }
 
     const candidateResult = await analystEngine.query({
-      layers: Array.isArray(spec.layers) && spec.layers.length ? spec.layers : undefined,
+      layers:
+        Array.isArray(spec.layers) && spec.layers.length
+          ? spec.layers
+          : undefined,
       scope: spec.scope,
       filters: [],
       limit: 50,
     });
     if (!candidateResult.ok) {
-      return { ok: false, error: candidateResult.error, coverage: candidateResult.coverage };
+      return {
+        ok: false,
+        error: candidateResult.error,
+        coverage: candidateResult.coverage,
+      };
     }
     if (!candidateResult.items.length) {
       return {

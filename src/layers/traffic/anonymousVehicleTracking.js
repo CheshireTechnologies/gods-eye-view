@@ -54,7 +54,10 @@ export function createAnonymousVehicleTracking({
   /** Reuse a still-fresh token for this dot, or mint (and retire the old one). */
   function _sessionToken(dot, nowMs) {
     const existing = _sessions.get(dot);
-    if (existing && nowMs - existing.issuedAtMs <= ANON_VEHICLE_SESSION_TTL_MS) {
+    if (
+      existing &&
+      nowMs - existing.issuedAtMs <= ANON_VEHICLE_SESSION_TTL_MS
+    ) {
       return existing.token;
     }
     if (existing) _retireSession(dot, existing);
@@ -107,7 +110,9 @@ export function createAnonymousVehicleTracking({
       return [];
     }
     const effectiveRadiusM = Math.min(
-      Number.isFinite(radiusM) ? Math.max(0, radiusM) : ANON_VEHICLE_MAX_RANGE_M,
+      Number.isFinite(radiusM)
+        ? Math.max(0, radiusM)
+        : ANON_VEHICLE_MAX_RANGE_M,
       ANON_VEHICLE_MAX_RANGE_M,
     );
     const effectiveLimit = Number.isFinite(limit)

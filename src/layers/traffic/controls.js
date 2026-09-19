@@ -146,9 +146,10 @@ export function createControls({ state: layerState, services, parts, source }) {
         if (sampled.length >= maxCount) break;
       }
 
-      const tokens = parts.anonymousVehicleTracking.methods.getVehicleLabelTokens(
-        sampled.map((s) => s.dot),
-      );
+      const tokens =
+        parts.anonymousVehicleTracking.methods.getVehicleLabelTokens(
+          sampled.map((s) => s.dot),
+        );
 
       return sampled.map(({ dot, index }) => {
         const token = tokens.get(dot);

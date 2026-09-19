@@ -37,7 +37,10 @@ function createOllamaCache({ diskDir, memoryTtlMs, maxEntries }) {
       .mkdir(diskDir, { recursive: true })
       .then(() => fsp.writeFile(diskPath(key), JSON.stringify(payload)))
       .catch((err) =>
-        console.warn('[Ollama Proxy] disk cache write failed:', err?.message || err),
+        console.warn(
+          '[Ollama Proxy] disk cache write failed:',
+          err?.message || err,
+        ),
       );
   }
 

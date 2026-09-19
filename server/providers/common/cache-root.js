@@ -24,7 +24,8 @@ let _warnedUnreachable = false;
 function resolveCacheRoot() {
   const configured = String(process.env.GEV_CACHE_DIR || '').trim();
   if (!configured) return DEFAULT_CACHE_DIR;
-  const reachable = existsSync(configured) || existsSync(path.dirname(configured));
+  const reachable =
+    existsSync(configured) || existsSync(path.dirname(configured));
   if (reachable) return configured;
   if (!_warnedUnreachable) {
     _warnedUnreachable = true;

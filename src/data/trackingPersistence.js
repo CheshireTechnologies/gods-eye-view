@@ -16,7 +16,11 @@ const STORAGE_KEY = 'gev:tracking-persistence';
 // storage can be absent (SSR, Node test runner, privacy mode), in which case
 // the preference simply lives for the session instead of surviving reload.
 function safeStorage() {
-  try { return globalThis.localStorage || null; } catch { return null; }
+  try {
+    return globalThis.localStorage || null;
+  } catch {
+    return null;
+  }
 }
 
 let _storage = safeStorage();

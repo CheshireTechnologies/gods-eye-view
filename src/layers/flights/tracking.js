@@ -728,7 +728,9 @@ export function createTracking({
     // share/session-restore callers) are bounded: past the layer's expiry
     // window this is CONFIRMED DISAPPEARANCE, not "still mid-refresh" — stop
     // waiting and tell the UI, rather than latching silently forever.
-    if (isRefreshRestoreExpired(pending, Date.now(), REFRESH_TRACKING_EXPIRY_MS)) {
+    if (
+      isRefreshRestoreExpired(pending, Date.now(), REFRESH_TRACKING_EXPIRY_MS)
+    ) {
       flightState._pendingTrackingRestore = null;
       _emitAwarenessEvent('gev:awareness-subject-cleared', {
         layerId: 'flights',

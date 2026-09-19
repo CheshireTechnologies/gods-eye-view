@@ -589,7 +589,8 @@ export const ACTION_DESCRIPTIONS = {
     parameters: {
       properties: {
         radiusKm: {
-          description: 'Search radius around the view target, in km. Default 1, max 5.',
+          description:
+            'Search radius around the view target, in km. Default 1, max 5.',
         },
       },
     },
@@ -638,7 +639,7 @@ export const ACTION_DESCRIPTIONS = {
   },
   prepare_code_change: {
     description:
-      'Call this ONLY when the user asks you to implement, write, build, or change the APP\'S OWN CODE — typically right after discussing what to build. You cannot edit files yourself, and never claim otherwise or pretend to have made a change. This distills the discussed change into the exact local command for the reviewed, human-in-the-loop `ai-edit` tool and copies it to the clipboard. If the result has copied:true, tell the user plainly you can\'t write code directly, but you\'ve copied the command to their clipboard — paste it into a terminal in the project folder and a local model will draft the change for their review; nothing is written until they approve each file, one by one. If copied:false, say the command aloud slowly instead so they can type it themselves.',
+      "Call this ONLY when the user asks you to implement, write, build, or change the APP'S OWN CODE — typically right after discussing what to build. You cannot edit files yourself, and never claim otherwise or pretend to have made a change. This distills the discussed change into the exact local command for the reviewed, human-in-the-loop `ai-edit` tool and copies it to the clipboard. If the result has copied:true, tell the user plainly you can't write code directly, but you've copied the command to their clipboard — paste it into a terminal in the project folder and a local model will draft the change for their review; nothing is written until they approve each file, one by one. If copied:false, say the command aloud slowly instead so they can type it themselves.",
     parameters: {
       properties: {
         instruction: {
