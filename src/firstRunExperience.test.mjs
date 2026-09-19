@@ -664,16 +664,16 @@ test('the voice TOOL SCHEMA matches the pinned release — the mission mapping i
   const block = JSON.stringify(GEV_REALTIME_TOOLS);
   // semantic_query, the get_current_view_state tracking-since description,
   // its includeLayers opt-in flag, the new search_news, prepare_code_change,
-  // set_tracking_persistence and nearby_vehicles tools (all 2026-09) are
-  // intentional additions,
+  // set_tracking_persistence and nearby_vehicles tools, and analyst_query's
+  // zoom-retry disclosure rule (all 2026-09) are intentional additions,
   // unrelated to the first-run/mission mapping this test guards — the pin
   // below moved to absorb them; the point of this test is that named-view
   // mapping work itself never edits the tool schema, not that the schema is
   // forever frozen.
-  assert.equal(block.length, 32068, 'serialized tool schema length drifted');
+  assert.equal(block.length, 32540, 'serialized tool schema length drifted');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    'fb9d8a1611070bfbbe5315b428e3257ed7cf30161d0cfa52d0d13c9d9671d44a',
+    '6289f48d2bcdb30d6ee073d1e7cbbc53e530e5c25bd5722f0bcebb93e2b28a0b',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
   const instructions = fs.readFileSync(new URL('../server/providers/openai/instructions.js', import.meta.url), 'utf8');

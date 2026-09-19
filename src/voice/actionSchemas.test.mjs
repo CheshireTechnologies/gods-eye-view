@@ -21,11 +21,12 @@ test('the complete Realtime tool payload retains its pre-extraction contract and
     .digest('hex');
   // Pinned hash updated for the merge that added set_tracking_persistence,
   // nearby_vehicles, semantic_query, search_news, prepare_code_change, and
-  // get_current_view_state's includeLayers opt-in — a real payload change,
-  // not refactor drift.
+  // get_current_view_state's includeLayers opt-in, then again for
+  // analyst_query's zoom-retry/historical-fallback wording — real payload
+  // changes, not refactor drift.
   assert.equal(
     digest,
-    'e13b5afa34086f3256c725fd086431452bf453106c54c945ae4819b040314155',
+    'fe5156ee8fa9c6b754a63908070ce5c050766ae4a5a443fc4122c27b7fa9d241',
   );
 });
 

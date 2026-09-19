@@ -1,5 +1,6 @@
 import { ShellFacade } from './shellFacade.js';
 import { AircraftDisplay } from './aircraftDisplay.js';
+import { AnalystRetryToggle } from './analystRetryToggle.js';
 import { LayerBindings } from './layerBindings.js';
 import { PanelChrome } from './panelChrome.js';
 import { VisualSettings } from './visualSettings.js';
@@ -429,6 +430,8 @@ export class StyleManager extends ShellFacade {
       readDataManager: () => this._dataManager,
       layout: () => this._layoutRightPanels(),
     });
+
+    this._analystRetryToggle = new AnalystRetryToggle();
 
     // The shared world-overlay host must own its one postRender lane before
     // detection and tracked-readout initialize. It stays transparent until a

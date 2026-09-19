@@ -185,14 +185,15 @@ test('no unchanged Realtime tool definition drifts silently', () => {
   // semantic_query, search_news, prepare_code_change, set_tracking_persistence
   // and nearby_vehicles are brand-new additions (not edits to a shipped
   // tool), so they join this "everything else" bucket and the pin below moves
-  // each time.
+  // each time. analyst_query's description also gained the zoom-retry /
+  // last-known-sighting disclosure rule.
   assert.equal(unchanged.length, 26);
   const digest = createHash('sha256')
     .update(JSON.stringify(unchanged))
     .digest('hex')
     .slice(0, 16);
   // ALPR intentionally extends the two layer enums; retain the complete pin.
-  assert.equal(digest, '3831ea165aa54193', 'an unchanged Realtime tool definition drifted');
+  assert.equal(digest, '7721dc6d0b62f262', 'an unchanged Realtime tool definition drifted');
 });
 
 test('Radio volume and mission speed share the Sharpen slider visual language', () => {

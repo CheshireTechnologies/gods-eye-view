@@ -37,6 +37,12 @@ import { normalizeRadioCountryInput } from '../data/radioCountry.js';
 import { TR3B_CLASS } from '../data/tr3bRegistry.js';
 import { searchNews } from '../data/newsSearch.js';
 import { setTrackingPersistenceEnabled } from '../data/trackingPersistence.js';
+import { isAnalystZoomRetryEnabled } from '../data/analystZoomRetry.js';
+import { flightSightingHistory } from '../data/flightSightingHistory.js';
+import {
+  isNearestOriginFlightQuery,
+  historicalNearestOriginMatches,
+} from '../data/analystRetryPolicy.js';
 
 const ALLOWED_STYLES = new Set([
   'normal',
@@ -978,7 +984,13 @@ export function createGevActionRunner({
           resolveRegionRing,
         }),
       );
-      return runAnalystQuery(analystEngine, dataManager, args, _layerEnabledAt);
+      return runAnalystQuery(
+        analystEngine,
+        dataManager,
+        args,
+        _layerEnabledAt,
+        viewer,
+      );
     }
 
     if (name === 'semantic_query') {
@@ -4343,9 +4355,15 @@ function analystProviders(
       const mod = layer.module;
       if (typeof mod?.getAnalystRecords !== 'function') return [];
       const requestedLimit = recordLimitByLayer?.[layerKey];
-      return Number.isFinite(requestedLimit)
+      const rows = Number.isFinite(requestedLimit)
         ? mod.getAnalystRecords(requestedLimit) || []
         : mod.getAnalystRecords() || [];
+      // Opportunistic sighting history for the zoom-retry fallback (see
+      // analystRetryPolicy.js) — piggybacks on this already-scheduled
+      // snapshot instead of a dedicated poller, keeping getAnalystRecords'
+      // "zero per-frame cost, no listeners" contract intact.
+      if (layerKey === 'flights') flightSightingHistory.recordSightings(rows);
+      return rows;
     },
     resolveRegionRing,
     /**
@@ -4383,13 +4401,86 @@ function analystProviders(
   };
 }
 
+/**
+ * Once, for a "nearest flight from <origin>"-shaped query that came back
+ * empty: pull the camera back a little and re-run it, then — if still
+ * empty — answer from the most recently seen matching flight(s) instead of
+ * flatly reporting nothing. Gated on isAnalystZoomRetryEnabled() and
+ * isNearestOriginFlightQuery(spec) so it never fires for plain counts,
+ * unscoped/region queries, or non-flights layers, and never loops: this
+ * function performs at most one zoom and one historical lookup per call,
+ * and is never called again from within itself.
+ * @param {object} result - The engine's first (empty) result.
+ * @param {object} spec - The exact spec that produced it.
+ * @param {Cesium.Viewer|null} viewer
+ * @param {object} analystEngine
+ * @returns {Promise<{result: object, zoomRetried: boolean, usedHistoricalFallback: boolean}>}
+ */
+async function retryEmptyNearestOriginQuery(
+  result,
+  spec,
+  viewer,
+  analystEngine,
+) {
+  if (
+    result.count !== 0 ||
+    !viewer ||
+    !isAnalystZoomRetryEnabled() ||
+    !isNearestOriginFlightQuery(spec)
+  ) {
+    return { result, zoomRetried: false, usedHistoricalFallback: false };
+  }
+  let zoomRetried = false;
+  const zoom = adjustCameraZoom(viewer, { direction: 'out', amount: 'little' });
+  if (zoom?.ok) {
+    zoomRetried = true;
+    const retried = await analystEngine.query(spec);
+    if (retried.ok) result = retried;
+  }
+  if (result.count !== 0) {
+    return { result, zoomRetried, usedHistoricalFallback: false };
+  }
+  flightSightingHistory.prune();
+  const carto = viewer.camera?.positionCartographic;
+  const referenceCenter = carto
+    ? {
+        lat: Cesium.Math.toDegrees(carto.latitude),
+        lon: Cesium.Math.toDegrees(carto.longitude),
+      }
+    : null;
+  const historical = referenceCenter
+    ? historicalNearestOriginMatches(
+        flightSightingHistory.recentSightings(),
+        spec,
+        referenceCenter,
+      )
+    : [];
+  if (!historical.length) {
+    return { result, zoomRetried, usedHistoricalFallback: false };
+  }
+  const plural = historical.length > 1 ? 's' : '';
+  return {
+    result: {
+      ...result,
+      ok: true,
+      count: historical.length,
+      items: historical.map((item) => ({ ...item, layerKey: 'flights' })),
+      truncated: false,
+      scopeLabel: `${result.scopeLabel} — no live match, showing last-known position${plural}`,
+    },
+    zoomRetried,
+    usedHistoricalFallback: true,
+  };
+}
+
 async function runAnalystQuery(
   analystEngine,
   dataManager,
   args = {},
   _layerEnabledAt,
+  viewer = null,
 ) {
-  const result = await analystEngine.query({
+  const spec = {
     layers: Array.isArray(args.layers) ? args.layers : undefined,
     scope: args.scope,
     filters: Array.isArray(args.filters) ? args.filters : [],
@@ -4397,7 +4488,14 @@ async function runAnalystQuery(
     sortDir: args.sortDir,
     limit: args.limit,
     followUp: Boolean(args.followUp),
-  });
+  };
+  let result = await analystEngine.query(spec);
+  let zoomRetried = false;
+  let usedHistoricalFallback = false;
+  if (result.ok) {
+    ({ result, zoomRetried, usedHistoricalFallback } =
+      await retryEmptyNearestOriginQuery(result, spec, viewer, analystEngine));
+  }
   if (!result.ok)
     return {
       ok: false,
@@ -4438,6 +4536,10 @@ async function runAnalystQuery(
       'distanceKm',
       'confidence',
       'place',
+      // Only present on a historical-fallback item (see
+      // retryEmptyNearestOriginQuery) — tells the model, in the record
+      // itself, that this position is not live.
+      'staleSecondsAgo',
     ]) {
       if (r[k] !== null && r[k] !== undefined) compact[k] = r[k];
     }
@@ -4516,6 +4618,12 @@ async function runAnalystQuery(
     items,
     summary: result.summary,
     coverage: result.coverage,
+    // Transparency for the zoom-retry fallback (analystRetryPolicy.js): tell
+    // the model plainly when the answer required widening the search or
+    // reaching for a last-known (non-live) position, so it can say so rather
+    // than presenting either as an ordinary in-view result.
+    ...(zoomRetried ? { zoomRetried: true } : {}),
+    ...(usedHistoricalFallback ? { usedHistoricalFallback: true } : {}),
     // The panel's own numbers, carried so the answer can match what the
     // operator is looking at regardless of how the model reads the note.
     // Flattened alongside the object so the count and its subject cannot be

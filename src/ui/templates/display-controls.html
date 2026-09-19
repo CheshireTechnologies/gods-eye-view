@@ -90,6 +90,15 @@
       </div>
     </div>
     <div class="pp-toggle-group">
+      <!-- Default ON in markup — see src/data/analystZoomRetry.js. Mirrors
+           #scope-toggle's "markup carries the default" convention; the
+           controller re-syncs from the persisted localStorage preference. -->
+      <button class="pp-toggle-btn active" id="analyst-zoom-retry-toggle" title="When a &quot;nearest flight from&quot; question finds nothing in view, automatically pull back and retry once, then fall back to the last-known position if still nothing" aria-pressed="true">
+        <span class="pp-icon material-symbols-outlined" aria-hidden="true">radar</span>
+        <span class="pp-label">Auto-Retry</span>
+      </button>
+    </div>
+    <div class="pp-toggle-group">
       <button class="pp-toggle-btn" id="draw-toggle" title="Draw on the world — click vertices, double-click or Enter to finish, Esc to cancel" aria-pressed="false">
         <span class="pp-icon material-symbols-outlined" aria-hidden="true">draw</span>
         <span class="pp-label">Draw</span>
