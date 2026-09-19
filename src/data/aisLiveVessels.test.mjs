@@ -1247,6 +1247,7 @@ test('vessel trail lifecycle: deselect clears the selected-vessel trail', () => 
       trailMmsi: null,
       trailPositionCount: 0,
       vesselCount: 1,
+      pendingSelectionRestore: null,
     });
   } finally {
     harness.cleanup();
@@ -1269,6 +1270,7 @@ test('vessel trail lifecycle: reconciliation eviction clears an orphaned trail',
       trailMmsi: null,
       trailPositionCount: 0,
       vesselCount: 0,
+      pendingSelectionRestore: null,
     });
   } finally {
     _setVesselStateForTest({ enabled: false });

@@ -24,11 +24,11 @@ const css = readStylesheet(new URL('../style.css', import.meta.url));
 
 function realtimeTools() { return GEV_REALTIME_TOOLS; }
 
-test('Realtime schema exposes the authoritative 31-tool inventory', () => {
+test('Realtime schema exposes the authoritative 33-tool inventory', () => {
   const tools = realtimeTools();
-  assert.equal(tools.length, 31);
+  assert.equal(tools.length, 33);
   const names = tools.map((tool) => tool.name);
-  assert.equal(new Set(names).size, 31, 'tool names are unique');
+  assert.equal(new Set(names).size, 33, 'tool names are unique');
   assert.ok(names.includes('set_context_mode'));
   assert.ok(names.includes('control_cockpit'));
   assert.ok(names.includes('select_nearest_aircraft'));
@@ -182,16 +182,17 @@ test('no unchanged Realtime tool definition drifts silently', () => {
   const unchanged = realtimeTools()
     .filter((tool) => !TOUCHED.has(tool.name))
     .sort((a, b) => a.name.localeCompare(b.name));
-  // semantic_query, search_news, and prepare_code_change are brand-new
-  // additions (not edits to a shipped tool), so they join this "everything
-  // else" bucket and the pin below moves each time.
-  assert.equal(unchanged.length, 24);
+  // semantic_query, search_news, prepare_code_change, set_tracking_persistence
+  // and nearby_vehicles are brand-new additions (not edits to a shipped
+  // tool), so they join this "everything else" bucket and the pin below moves
+  // each time.
+  assert.equal(unchanged.length, 26);
   const digest = createHash('sha256')
     .update(JSON.stringify(unchanged))
     .digest('hex')
     .slice(0, 16);
   // ALPR intentionally extends the two layer enums; retain the complete pin.
-  assert.equal(digest, 'ebbc103d7d15b575', 'an unchanged Realtime tool definition drifted');
+  assert.equal(digest, '3831ea165aa54193', 'an unchanged Realtime tool definition drifted');
 });
 
 test('Radio volume and mission speed share the Sharpen slider visual language', () => {

@@ -247,13 +247,16 @@
     "runtime": "node",
     "exports": ["./server/providers/regional"],
     "modules": [
+      "server/providers/common/cache-root.js",
       "server/providers/common/http.js",
       "server/providers/common/query.js",
       "server/providers/common/rate-limit.js",
+      "server/providers/ollama/constants.js",
       "server/providers/regional.js",
       "server/providers/regional/briefing.js",
       "server/providers/regional/http.js",
       "server/providers/regional/news.js",
+      "server/providers/regional/news-search.js",
       "server/providers/regional/place.js",
       "server/providers/regional/query.js",
       "server/providers/regional/weather-effects.js",
@@ -697,7 +700,9 @@
       "src/layers/flights/records.js",
       "src/layers/flights/recordPolicy.js",
       "src/layers/flights/snapshotRenderer.js",
-      "src/data/inputOwnership.js"
+      "src/data/inputOwnership.js",
+      "src/data/trackingPersistence.js",
+      "src/data/refreshTrackingRestore.js"
     ],
     "external": ["cesium"]
   },
@@ -732,7 +737,9 @@
       "src/layers/military/records.js",
       "src/layers/military/recordPolicy.js",
       "src/layers/military/snapshotRenderer.js",
-      "src/data/inputOwnership.js"
+      "src/data/inputOwnership.js",
+      "src/data/trackingPersistence.js",
+      "src/data/refreshTrackingRestore.js"
     ],
     "external": ["cesium"]
   },
@@ -756,7 +763,9 @@
       "src/data/trackingClickGesture.js",
       "src/layers/aircraft/classification.js",
       "src/layers/aircraft/index.js",
-      "src/data/inputOwnership.js"
+      "src/data/inputOwnership.js",
+      "src/data/trackingPersistence.js",
+      "src/data/refreshTrackingRestore.js"
     ],
     "external": ["cesium"]
   },
@@ -780,7 +789,9 @@
       "src/layers/vessels/records.js",
       "src/layers/vessels/recordPolicy.js",
       "src/layers/vessels/snapshotRenderer.js",
-      "src/data/inputOwnership.js"
+      "src/data/inputOwnership.js",
+      "src/data/trackingPersistence.js",
+      "src/data/refreshTrackingRestore.js"
     ],
     "external": ["cesium"]
   },
@@ -836,7 +847,9 @@
       "src/layers/satellites/state.js",
       "src/layers/satellites/testing.js",
       "src/layers/satellites/tracking.js",
-      "src/data/inputOwnership.js"
+      "src/data/inputOwnership.js",
+      "src/data/trackingPersistence.js",
+      "src/data/refreshTrackingRestore.js"
     ],
     "external": ["cesium", "satellite.js"]
   },
@@ -938,6 +951,7 @@
       "src/layers/traffic/style.js",
       "src/layers/traffic/timing.js",
       "src/layers/traffic/viewport.js",
+      "src/layers/traffic/anonymousVehicleTracking.js",
       "src/sources/overpassRoads.js"
     ],
     "external": ["cesium", "pbf", "@mapbox/vector-tile"]
@@ -1726,7 +1740,12 @@
       "src/ui/aircraftDisplay.js",
       "src/ui/layerBindings.js",
       "src/ui/displayBindings.js",
-      "src/ui/shellFacade.js"
+      "src/ui/shellFacade.js",
+      "src/data/trackingPersistence.js",
+      "src/data/refreshTrackingRestore.js",
+      "src/layers/traffic/anonymousVehicleTracking.js",
+      "src/data/newsSearch.js",
+      "src/voice/actionSchemas.js"
     ],
     "external": [
       "@mapbox/vector-tile",
@@ -2120,7 +2139,10 @@
       "src/sources/overpassFeaturesRecords.js",
       "src/sources/overpassFeatures.js",
       "src/sources/featureSource.js",
-      "src/sources/overpassRoads.js"
+      "src/sources/overpassRoads.js",
+      "src/data/trackingPersistence.js",
+      "src/data/refreshTrackingRestore.js",
+      "src/layers/traffic/anonymousVehicleTracking.js"
     ],
     "external": [
       "cesium",
