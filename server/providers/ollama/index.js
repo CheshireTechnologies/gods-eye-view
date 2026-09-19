@@ -1,6 +1,8 @@
 import { createEmbeddingsHandler } from './embeddings.js';
 import { createNarrateHandler } from './narrate.js';
 import { createNewsKnowledgeHandler } from './newsKnowledge.js';
+import { createIntentHandler } from './intent.js';
+import { createReplyHandler } from './reply.js';
 
 /**
  * Vite plugin: local Ollama intelligence backend for the semantic_query voice
@@ -23,6 +25,14 @@ function ollamaIntelligenceProxy({ baseUrl, embedModel, chatModel } = {}) {
     middlewares.use(
       '/api/ollama/news-knowledge',
       createNewsKnowledgeHandler({ baseUrl, model: chatModel }),
+    );
+    middlewares.use(
+      '/api/ollama/intent',
+      createIntentHandler({ baseUrl, model: chatModel }),
+    );
+    middlewares.use(
+      '/api/ollama/reply',
+      createReplyHandler({ baseUrl, model: chatModel }),
     );
   }
 

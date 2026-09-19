@@ -212,9 +212,22 @@ export class GevRealtimeController {
     debugSink = postDebugLog,
     actionExecutor,
     onSessionEvent,
+    onFatalVoiceError = null,
+    isLocalFallbackActive = () => false,
   }) {
     this.actionExecutor = actionExecutor;
     this.onSessionEvent = onSessionEvent;
+    // Local fallback hook (src/voice/localVoiceFallback.js): every terminal
+    // connection failure — never-connected or dropped mid-session — routes
+    // through reportError() below, so this one hook covers both instead of
+    // needing separate wiring at each fatalError() call site.
+    this.onFatalVoiceError = onFatalVoiceError;
+    // The Space push-to-talk shortcut below is bound globally and would
+    // otherwise call this.start() straight into the cloud path with no idea
+    // local fallback is running — silently bouncing an active local session
+    // back to cloud on every Space press. Checked at the top of the keydown
+    // handler so Space is a no-op (native key behavior) while local is live.
+    this.isLocalFallbackActive = isLocalFallbackActive;
     this.backend = backend;
     this.lifetimeSignal = signal;
     this.connectionAbort = null;
@@ -612,6 +625,7 @@ export class GevRealtimeController {
     if (this.shortcutKeyDownHandler) return;
     this.shortcutKeyDownHandler = (event) => {
       if (!shouldHandlePushToTalkKeyDown(event)) return;
+      if (this.isLocalFallbackActive()) return;
       if (event.repeat) {
         if (this.spaceKeyHeld && !this.pushToTalkHoldPreservesNative)
           event.preventDefault();
@@ -1979,6 +1993,11 @@ export class GevRealtimeController {
     console.error('[GEV Realtime]', record);
     this.debugLog('error', record);
     this.setStatus('error', formatErrorForDisplay(record));
+    try {
+      this.onFatalVoiceError?.(record);
+    } catch (hookError) {
+      console.error('[GEV Realtime] onFatalVoiceError hook failed', hookError);
+    }
     return record;
   }
 

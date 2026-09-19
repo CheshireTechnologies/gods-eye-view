@@ -2,6 +2,8 @@ import { SceneDirector } from '../scenes/director.js';
 import { initAnnotations } from '../annotations/index.js';
 import { initDrawTool } from '../annotations/drawTool.js';
 import { initGevVoiceCommands } from '../voice/gevRealtime.js';
+import { createGevActionRunner } from '../voice/gevActions.js';
+import { LocalVoiceFallback } from '../voice/localVoiceFallback.js';
 import { installScopeMask, destroyScopeMask } from '../scopeMask.js';
 import {
   installRenderGovernor,
@@ -116,6 +118,30 @@ export function createApplicationTools({
   defer(() => {
     if (window.__godsEyeView === debug) delete window.__godsEyeView;
   });
+  // Fully-local fallback (src/voice/localVoiceFallback.js): its own action
+  // runner, built from the SAME options the cloud path uses, so both
+  // execute tools identically once dispatched. Passed to initGevVoiceCommands
+  // below as `localFallback`, which activates it automatically on a fatal
+  // Realtime error AND wires the on-screen LOCAL/CLOUD toggle button
+  // (src/voice/sessionCommands.js) for a manual switch either direction.
+  // sessionCommands.js owns `onStatus` (it has the #gev-voice-control refs
+  // and clears the stuck cloud-error tray on the handoff) — not wired here.
+  const localVoiceFallback = new LocalVoiceFallback({
+    runner: createGevActionRunner({
+      ...voice,
+      floorServices: operations.surface.groundFloor,
+      annotationResolver: operations.annotationResolver,
+      searchNavigation: operations.searchAndFlyTo,
+      placeSearch,
+      viewer,
+      styleManager,
+      dataManager,
+      sceneDirector,
+      annotations,
+    }),
+  });
+  defer(() => localVoiceFallback.deactivate());
+
   const voiceCommands = initGevVoiceCommands({
     ...voice,
     floorServices: operations.surface.groundFloor,
@@ -128,6 +154,7 @@ export function createApplicationTools({
     dataManager,
     sceneDirector,
     annotations,
+    localFallback: localVoiceFallback,
   });
   defer(() => {
     voiceCommands.stop({ removeUi: true });

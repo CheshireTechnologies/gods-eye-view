@@ -48,6 +48,16 @@
   background: rgba(255, 196, 107, 0.12);
 }
 
+/* Local (Piper) fallback engaged — green, distinct from both the default
+   cyan and the tier button's amber so "we're off the cloud path" reads at a
+   glance. Selector by id outranks the shared .gev-voice-tier-btn pressed
+   rule at equal class-count specificity. */
+#gev-voice-fallback[aria-pressed='true'] {
+  color: #7cf2a0;
+  border-color: rgba(124, 242, 160, 0.55);
+  background: rgba(124, 242, 160, 0.12);
+}
+
 .gev-voice-cost-value {
   color: var(--text-dim);
   font-family: var(--font-mono);
